@@ -66,6 +66,13 @@ def get_degrees(graph):
     return list_degrees
 
 
+def compute_diameter(graph):
+    test = nx.eccentricity(graph)
+
+    max_len = np.max(list(test.values()))
+    return max_len
+
+
 def product_graph(g1, g2):
     """
     Version Guillaume

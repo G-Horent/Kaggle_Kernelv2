@@ -1,42 +1,37 @@
 import numpy as np
 import cvxpy as cp
+from kernel_class import Kernel_nwalk, RandomWalkKernel, KernelRBF
 
 
 class KernelRidgeRegression:
-    def __init__(self, lmbd=1.0, kernel='n_walk', precomp=True):
+    def __init__(self, lmbd=1.0, kernel='n_walk', precomputed=True, **kwargs):
         super().__init__()
         self.lmbd = lmbd
-        self.kernel = kernel
         self.alpha = None
-        self.precomp = precomp
-        if self.precomp:
-
-
+        self.precomputed = precomputed
+        if self.precomputed:
+            pass
+        else:
+            self.kernel = Kernel_nwalk(n=3)
 
     def fit(self, X, y):
         n = y.shape[0]
-        K = self.kernel(X, X)
+        K = self.kernel
 
-        self.alpha = np.linalg.inv(K+self.lmbd*n*np.eye(n))@y
+        self.alpha = np.linalg.inv(K + self.lmbd * n * np.eye(n)) @ y
 
     def predict(self, X, y):
         return 0
-        #TODO : add prediction
+        # TODO : add prediction
 
     def score(self, X, y):
         return 0
-        #TODO:
-
-
-
-
+        # TODO:
 
 
 class KernelLogisticRegression:
     def __init__(self):
-
-
-
+        super().__init__()
 
 
 class KernelSVM:
@@ -53,8 +48,8 @@ class KernelSVM:
         K = self.kernel_(X, X, **self.params)
         # Define QP and solve it with cvxpy
         alpha = cp.Variable(N_tr)
-        objective = cp.Maximize(2*alpha.T@y - cp.quad_form(alpha, K))
-        constraints = [0 <= cp.multiply(y,alpha), cp.multiply(y,alpha) <= 1/(2*self.lmbd*N_tr)]
+        objective = cp.Maximize(2 * alpha.T @ y - cp.quad_form(alpha, K))
+        constraints = [0 <= cp.multiply(y, alpha), cp.multiply(y, alpha) <= 1 / (2 * self.lmbd * N_tr)]
         prob = cp.Problem(objective, constraints)
 
         # The optimal objective value is returned by `prob.solve()`.
@@ -63,5 +58,3 @@ class KernelSVM:
         self.alpha = alpha.value
 
         return self
-
-
