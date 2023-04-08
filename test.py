@@ -2,6 +2,8 @@ import networkx as nx
 import numpy as np
 from data import load_training_data
 import itertools
+import matplotlib.pyplot as plt
+from n_walk import get_labels_edges
 
 
 def test_product_graph(g1, g2):
@@ -19,17 +21,14 @@ def test_product_graph(g1, g2):
             new_nodes = [(i, x.item(0)) for x in np.nditer(idx)]
             product_nodes += new_nodes
 
-    product_nodes_set = set(product_nodes)
-
+    # Add edges
     for curr_node in product_nodes:
         neighbors_g1 = list(g1.adj[curr_node[0]].keys())
         neighbors_g2 = list(g2.adj[curr_node[1]].keys())
 
-        candidate_nodes = [(u, v) for u, v in itertools.product(neighbors_g1, neighbors_g2) if
-                           labels_g1[u] == labels_g2[v]]
-        for cand_node in candidate_nodes:
-            if cand_node in product_nodes_set:
-                edges.append((curr_node, cand_node))
+        added_edges = [(curr_node, (u, v)) for u, v in itertools.product(neighbors_g1, neighbors_g2) if
+                       labels_g1[u] == labels_g2[v]]
+        edges += added_edges
 
     prod_graph = nx.Graph()
     prod_graph.add_nodes_from(product_nodes)
@@ -52,6 +51,23 @@ def get_labels(graph):
 if __name__ == '__main__':
     train_list, train_labels = load_training_data()
     final_graph = test_product_graph(train_list[0], train_list[1])
+
+    print(list(nx.neighbors(train_list[0], 0)))
+    print(train_list[0].adj)
+
+    print(list(nx.get_edge_attributes(train_list[0], 'labels').values()))
+    print(get_labels_edges(train_list[0]))
+
+
+    print(train_list[0])
+    print(train_list[1])
+    subax1 = plt.subplot(131)
+    nx.draw(train_list[0], with_labels=True, ax=subax1, font_weight='bold')
+    subax2 = plt.subplot(132)
+    nx.draw(train_list[1], with_labels=True, ax=subax2, font_weight='bold')
+    subax3 = plt.subplot(133)
+    nx.draw(final_graph, with_labels=True, ax=subax3, font_weight='bold')
+    plt.show()
     print(final_graph.number_of_nodes())
     print(final_graph.number_of_edges())
     print(final_graph.nodes)

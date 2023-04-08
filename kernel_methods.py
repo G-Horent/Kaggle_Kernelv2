@@ -3,11 +3,15 @@ import cvxpy as cp
 
 
 class KernelRidgeRegression:
-    def __init__(self, lmbd=1.0, kernel='n_walk'):
+    def __init__(self, lmbd=1.0, kernel='n_walk', precomp=True):
         super().__init__()
         self.lmbd = lmbd
         self.kernel = kernel
         self.alpha = None
+        self.precomp = precomp
+        if self.precomp:
+
+
 
     def fit(self, X, y):
         n = y.shape[0]
@@ -38,14 +42,13 @@ class KernelLogisticRegression:
 class KernelSVM:
     def __init__(self, lmbd=1., kernel=None, precomputed_kernel=None):
         self.lmbd = lmbd
-
         self.kernel = kernel
-        self.params = {'lamb': lamb, 'sig': sigma, 'k': k}
+        self.alpha = None
+        self.params = None
 
     def fit(self, X, y):
-        # We keep values of training in memory for prediction
         N_tr = X.shape[0]
-        self.X_tr_ = np.copy(X)
+        self.X_tr = np.copy(X)
 
         K = self.kernel_(X, X, **self.params)
         # Define QP and solve it with cvxpy
@@ -62,10 +65,3 @@ class KernelSVM:
         return self
 
 
-class MultipleKernel:
-    def __init__(self):
-        #TODO
-
-
-    def predict(self):
-        #TODO
