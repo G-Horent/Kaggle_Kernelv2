@@ -67,6 +67,12 @@ def get_degrees(graph):
 
 
 def product_graph(g1, g2):
+    """
+    Version Guillaume
+    :param g1:
+    :param g2:
+    :return:
+    """
     labels_g1 = np.array(get_labels_nodes(g1))
     labels_g2 = np.array(get_labels_nodes(g2))
 
@@ -102,6 +108,13 @@ def product_graph(g1, g2):
 
 
 def graph_product(g1, g2, with_lonely_nodes=True):
+    """
+    Version Léo
+    :param g1:
+    :param g2:
+    :param with_lonely_nodes:
+    :return:
+    """
     prod_edges = []
     labels1 = nx.get_node_attributes(g1, "labels")
     labels2 = nx.get_node_attributes(g2, "labels")
