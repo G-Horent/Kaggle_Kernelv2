@@ -7,9 +7,9 @@ from tqdm import tqdm
 
 
 class Kernel:
-    def __init__(self):
-        self.name = None
-        self.save_kernel = True
+    def __init__(self, name=None, save_kernel=True):
+        self.name = name
+        self.save_kernel = save_kernel
 
     def kernel_eval(self, g1, g2):
         return 0
@@ -42,10 +42,8 @@ class Kernel:
 
 class Kernel_nwalk(Kernel):
     def __init__(self, n=3, save_kernel=True):
-        super().__init__()
+        super().__init__(name='walk_kernel', save_kernel=save_kernel)
         self.n = n
-        self.save_kernel = save_kernel
-        self.name = 'walk_kernel'
 
     def kernel_eval(self, graph_1, graph_2):
         prod_graph = product_graph(graph_1, graph_2)
@@ -92,7 +90,7 @@ class KernelRBF(Kernel):
 
 
 class RandomWalkKernel(Kernel):
-    def __init__(self, lam, with_lonely_nodes=True):
+    def __init__(self, lam, with_lonely_nodes=True, save_kernel=False):
         """
         Params  :
             - lam : float
@@ -100,7 +98,7 @@ class RandomWalkKernel(Kernel):
             - with_lonely_nodes : bool
                 whether or not we must keep lonely nodes on the product graph
         """
-        super().__init__()
+        super().__init__(name='random_walk_kernel', save_kernel=save_kernel)
         self.lam = lam
         self.with_lonely_nodes = with_lonely_nodes
 
