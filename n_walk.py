@@ -67,10 +67,39 @@ def get_degrees(graph):
 
 
 def compute_diameter(graph):
-    test = nx.eccentricity(graph)
+    all_shortest_paths = list(nx.all_pairs_shortest_path_length(graph))
+    list_largest_paths = [np.max(list(dic.values())) for node, dic in all_shortest_paths]
 
-    max_len = np.max(list(test.values()))
-    return max_len
+    largest_path = np.max(list_largest_paths)
+    return largest_path
+
+
+# def compute_nb_cycles(graph):
+#     nb_cycles = 0
+#     nodes_left = list(graph.nodes)
+#     while len(nodes_left) > 0:
+#         print(nodes_left)
+#         try:
+#             list_edges = nx.find_cycle(graph, nodes_left)
+#         except nx.exception.NetworkXNoCycle:
+#             # no more cycles, return the n
+#             print(nb_cycles)
+#             return nb_cycles
+#         else:
+#             # Cycle found, add it and remove nodes from the cycle
+#             nb_cycles += 1
+#             print("Found cycle")
+#             for idx1, idx2 in list_edges:
+#                 print(f"removing node {idx2}")
+#                 nodes_left.remove(idx2)
+
+def check_cycle(graph):
+    try:
+        list_edges = nx.find_cycle(graph)
+    except nx.exception.NetworkXNoCycle:
+        return 0
+    else:
+        return 1
 
 
 def product_graph(g1, g2):
@@ -191,8 +220,7 @@ def graph_product_el(g1, g2, with_lonely_nodes=True):
 
 if __name__ == '__main__':
     length_walk = 3
-    training_list, training_labels = load_training_data()
-    training_split = split_data(training_list, training_labels)
+    training_split = split_data()
 
     nb_subset = 2
     test_subset = training_split[nb_subset][0]

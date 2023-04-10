@@ -1,9 +1,11 @@
 import networkx as nx
 import numpy as np
-from n_walk import product_graph, compute_adj_matrix, get_labels_nodes, get_labels_edges, get_degrees, graph_product, compute_diameter
+from n_walk import product_graph, compute_adj_matrix, get_labels_nodes, get_labels_edges, get_degrees, graph_product, \
+    compute_diameter, check_cycle
 from datetime import datetime
 from data import load_training_data, split_data, load_test_data
 from tqdm import tqdm
+from scipy.spatial import distance_matrix
 
 
 class Kernel:
@@ -42,7 +44,7 @@ class Kernel:
 
 class Kernel_nwalk(Kernel):
     def __init__(self, n=3, save_kernel=True):
-        super().__init__(name='walk_kernel', save_kernel=save_kernel)
+        super().__init__(name='Kernel_nwalk', save_kernel=save_kernel)
         self.n = n
 
     def kernel_eval(self, graph_1, graph_2):
@@ -56,7 +58,7 @@ class Kernel_nwalk(Kernel):
 
 class KernelRBF(Kernel):
     def __init__(self, sigma=2.0):
-        super().__init__()
+        super().__init__(name='KernelRBF')
         self.sigma = sigma
 
     @staticmethod
@@ -66,7 +68,7 @@ class KernelRBF(Kernel):
         :param graph_list:
         :return:
         """
-        dim_features = 63
+        dim_features = 65
         nb_graphs = len(graph_list)
         features_mat = np.zeros((nb_graphs, dim_features))
         for idx, curr_graph in enumerate(tqdm(graph_list)):
@@ -75,18 +77,22 @@ class KernelRBF(Kernel):
             bin_degrees = np.bincount(get_degrees(curr_graph), minlength=7)
             diameter = compute_diameter(curr_graph)
             density = nx.density(curr_graph)
-            vec = np.hstack((bin_nodes, bin_edges, bin_degrees, diameter, density))
+            has_cycle = check_cycle(curr_graph)
+            nb_components = nx.number_connected_components(curr_graph)
+            vec = np.hstack((bin_nodes, bin_edges, bin_degrees, diameter, density, has_cycle, nb_components))
             features_mat[idx, :] = vec
 
         return features_mat
 
-    def compute_gram_matrix(self, X):
-        # TODO
-        return 0
+    def kernel_eval(self, g1, g2):
+        feat = self.extract_features([g1, g2])
+        return np.exp(-(np.linalg.norm(feat[0, :] - feat[1, :])**2)/(2 * self.sigma**2))
 
-    def compute_outer_gram(self, X, Y):
-        # TODO
-        return 0
+    def compute_gram_matrix(self, X):
+        return np.exp(-(distance_matrix(X, X)**2)/(2 * (self.sigma**2)))
+
+    def compute_outer_gram(self, X1, X2):
+        return np.exp(-(distance_matrix(X1, X2)**2)/(2 * (self.sigma**2)))
 
 
 class RandomWalkKernel(Kernel):
@@ -98,7 +104,7 @@ class RandomWalkKernel(Kernel):
             - with_lonely_nodes : bool
                 whether or not we must keep lonely nodes on the product graph
         """
-        super().__init__(name='random_walk_kernel', save_kernel=save_kernel)
+        super().__init__(name='RandomWalkKernel', save_kernel=save_kernel)
         self.lam = lam
         self.with_lonely_nodes = with_lonely_nodes
 
@@ -120,11 +126,14 @@ if __name__ == '__main__':
     length_walk = 3
     training_list, training_labels = load_training_data()
     test_list = load_test_data()
-    training_split = split_data(training_list, training_labels)
+    training_split = split_data()
 
     nb_subset = 0
     train_subset = training_split[nb_subset][0]
-    features = KernelRBF.extract_features(training_list)
-    print(features)
+    kernel_class = KernelRBF(sigma=2.0)
+    features = kernel_class.extract_features(training_list)
+    gram = kernel_class.compute_gram_matrix(features)
+    print(gram.shape)
+    print(np.linalg.eigh(gram))
     # test_k = Kernel_nwalk(n=length_walk, save_kernel=True).gram_cross(train_subset, test_list)
     # np.save(f'saved/test/walk_kernel_3_eval_subset_{nb_subset}_.npy', test_k)

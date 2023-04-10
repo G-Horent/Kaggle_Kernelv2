@@ -28,11 +28,12 @@ def load_test_data():
     return testing_data
 
 
-def split_data(training_data, training_labels, n_splits=3):
+def split_data(n_splits=3):
+    training_data, training_labels = load_training_data()
     splitter = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
     spl = list(splitter.split(training_data, training_labels))
     index_splits = [spl[j][1] for j in range(n_splits)]
-    # print(index_splits[])
+
     split_list = [(training_data[curr_idx], training_labels[curr_idx]) for curr_idx in index_splits]
 
     return split_list
@@ -40,7 +41,7 @@ def split_data(training_data, training_labels, n_splits=3):
 
 if __name__ == '__main__':
     train_data, train_labels = load_training_data()
-    split = split_data(train_data, train_labels)
+    split = split_data()
 
     test_data = load_test_data()
 

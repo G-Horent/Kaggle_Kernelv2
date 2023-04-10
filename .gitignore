@@ -1,1 +1,4 @@
 /saved/*.npy
+test.py
+*.csv
+/submissions

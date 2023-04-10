@@ -5,7 +5,7 @@ import networkx as nx
 
 def predictions_to_csv(filename, predictions):
     ids = list(range(1, 2001))
-    df = pd.DataFrame({"Id": ids, "Prediction": predictions})
+    df = pd.DataFrame({"Id": ids, "Predicted": predictions})
     df.to_csv(filename, sep=',', index=False)
 
 def plot_graph(g, with_labels = True, **kwargs):

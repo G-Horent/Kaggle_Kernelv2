@@ -1,11 +1,36 @@
 import numpy as np
 import cvxpy as cp
+from data import load_training_data, load_test_data, split_data
 from kernel_class import Kernel_nwalk, RandomWalkKernel, KernelRBF
+from time import time
+from utils import predictions_to_csv
 
 
-class KernelRidgeRegression:
-    def __init__(self, lmbd=1.0, kernel='n_walk', precomputed=True, **kwargs):
-        super().__init__()
+def get_kernel(name, **kwargs):
+    if name == 'KernelRBF':
+        return KernelRBF(sigma=kwargs['sigma'])
+    elif name == 'Kernel_nwalk':
+        return Kernel_nwalk(n=kwargs['n'])
+    elif name == 'RandomWalkKernel':
+        return RandomWalkKernel(lam=kwargs['lam_rand_walk'])
+    else:
+        raise NotImplementedError('Unknown kernel')
+
+
+class KernelMethod:
+    def __init__(self, kernel_name, **kwargs):
+        self.kernel = get_kernel(kernel_name, **kwargs)
+
+    def fit(self, X, y):
+        return 0
+
+    def predict(self, X_test):
+        return 0
+
+
+class KernelRidgeRegression(KernelMethod):
+    def __init__(self, lmbd=1.0, kernel_name='n_walk', precomputed=True, **kwargs):
+        super().__init__(kernel_name, **kwargs)
         self.lmbd = lmbd
         self.alpha = None
         self.precomputed = precomputed
@@ -20,7 +45,7 @@ class KernelRidgeRegression:
 
         self.alpha = np.linalg.inv(K + self.lmbd * n * np.eye(n)) @ y
 
-    def predict(self, X, y):
+    def predict(self, X):
         return 0
         # TODO : add prediction
 
@@ -34,59 +59,89 @@ class KernelLogisticRegression:
         super().__init__()
 
 
-class KernelSVM:
-    def __init__(self, lmbd=1., kernel=None, epsilon=1e-6):
+class KernelSVM(KernelMethod):
+    def __init__(self, lmbd=1., kernel_name='KernelRBF', precomputed_kernel=False, kernel_path='saved/', **kwargs):
+        super().__init__(kernel_name=kernel_name, **kwargs)
         self.lmbd = lmbd
-        self.epsilon = epsilon
-        self.kernel = kernel #from kernel class
-
+        # self.kernel = kernel
         self.alpha = None
-        self.X_tr = None
+        self.params = None
+        self.X_support = None
+        self.X_mean = None
+        self.X_std = None
+        self.precomputed_kernel = precomputed_kernel
+        self.kernel_path = kernel_path
+        self.alpha_support = None
 
-        # Support vectors
-        self.sv_idx = None
+    def fit(self, graph_list_train, y):
+        N = graph_list_train.shape[0]
+        if self.kernel.name == "KernelRBF":
+            # If Kernel RBF, compute feature matrix
+            X_train = self.kernel.extract_features(graph_list_train)
 
-    def fit(self, X, y, K=None):
-        if not(X is None):
-            N_tr = X.shape[0]
-            self.X_tr = np.copy(X)
+            # Normalizing features
+            self.X_mean = np.mean(X_train, axis=0)
+            self.X_std = np.std(X_train, axis=0)
+            self.X_std[np.argwhere(self.X_std == 0)] = 1e-8
+            X_train = (X_train - self.X_mean) / self.X_std
+
         else:
-            N_tr = K.shape[0]
+            X_train = graph_list_train
 
-        if K is None:
-            K = self.kernel.compute_gram_matrix(X)
+        if not self.precomputed_kernel:
+            K = self.kernel.compute_gram_matrix(X_train)
+            w, v = np.linalg.eigh(K)
 
-        # Define QP and solve it with cvxpy
-        alpha = cp.Variable(N_tr)
-        objective = cp.Maximize(2 * alpha.T @ y - cp.quad_form(alpha, K))
-        constraints = [0 <= cp.multiply(y, alpha), cp.multiply(y, alpha) <= 1 / (2 * self.lmbd * N_tr)]
-        prob = cp.Problem(objective, constraints)
+            print(K)
+            print(np.linalg.eigh(K))
+        else:
+            K = np.load(self.kernel_path)
 
-        # The optimal objective value is returned by `prob.solve()`.
+        print("Fitting KernelSVM")
+        alpha = cp.Variable(N)
+        obj = cp.Maximize(2 * alpha.T @ y - cp.quad_form(alpha, cp.psd_wrap(K)))
+        constraints = [0 <= cp.multiply(y, alpha), cp.multiply(y, alpha) <= 1 / (2 * self.lmbd * N)]
+        start = time()
+        prob = cp.Problem(obj, constraints)
         result = prob.solve()
-        # The optimal value for x is stored in `x.value`.
+        end = time()
+        print(f'QP Solved in {end - start} secs')
         self.alpha = alpha.value
+        print(self.alpha)
+        idx_alpha_support = np.nonzero(np.abs(self.alpha) > 10e-8)
+        print(idx_alpha_support[0].shape)
+        self.alpha_support = np.copy(self.alpha[idx_alpha_support])
+        self.X_support = np.copy(X_train[idx_alpha_support])
 
-        self.sv_idx = (self.alpha > self.epsilon)
+    def predict(self, graph_list_test):
+        if self.kernel.name == 'KernelRBF':
+            X_test = self.kernel.extract_features(graph_list_test)
+            X_test = (X_test - self.X_mean) / self.X_std
 
-        return self
-    
-    def predict(self, X_te, outer_K = None):
-        """Creates predictions for new data
-
-        Args:
-            X_te (ndarray of graphs, dim 1): Data to make predictions on.
-            outer_K (ndarray, optional): Precomputed outer gram matrix kernel(X_te, X_tr). Defaults to None, 
-                in which case, the outer gram matrix will be computed with the support vectors only.
-
-        Returns:
-            ndarray, dim 1: predictions. Those are reals (not between 0 and 1).
-        """
-        if outer_K is None:
-            outer_K = self.kernel.compute_outer_gram(X_te, self.X_tr[self.sv_idx])
-            logits = outer_K@self.alpha[self.sv_idx]
         else:
-            logits = outer_K@self.alpha
-        return logits
-        
+            X_test = graph_list_test
 
+        print("Computing kernel_outer")
+        kernel_outer = self.kernel.compute_outer_gram(X_test, self.X_support)
+        return kernel_outer @ self.alpha_support
+
+    def score(self, X, y):
+        y_pred = self.predict(X)
+
+        return np.sum(np.sign(y_pred) == y) / y.shape[0]
+
+
+if __name__ == '__main__':
+    train_data, train_labels = load_training_data()
+    test_data = load_test_data()
+
+    svm = KernelSVM(lmbd=0.00001, kernel_name='KernelRBF', precomputed_kernel=False, sigma=1.0)
+
+    train_split = split_data()
+
+    svm.fit(train_split[0][0], train_split[0][1])
+    predictions = svm.predict(test_data)
+    score = svm.score(train_split[1][0], train_split[1][1])
+    print(score)
+    print(f"Number of negative values: {np.count_nonzero(predictions < 0)}")
+    predictions_to_csv('submissions/test_submission.csv', predictions)
