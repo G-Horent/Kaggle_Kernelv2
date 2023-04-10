@@ -35,17 +35,27 @@ class KernelLogisticRegression:
 
 
 class KernelSVM:
-    def __init__(self, lmbd=1., kernel=None, precomputed_kernel=None):
+    def __init__(self, lmbd=1., kernel=None, epsilon=1e-6):
         self.lmbd = lmbd
-        self.kernel = kernel
+        self.epsilon = epsilon
+        self.kernel = kernel #from kernel class
+
         self.alpha = None
-        self.params = None
+        self.X_tr = None
 
-    def fit(self, X, y):
-        N_tr = X.shape[0]
-        self.X_tr = np.copy(X)
+        # Support vectors
+        self.sv_idx = None
 
-        K = self.kernel_(X, X, **self.params)
+    def fit(self, X, y, K=None):
+        if not(X is None):
+            N_tr = X.shape[0]
+            self.X_tr = np.copy(X)
+        else:
+            N_tr = K.shape[0]
+
+        if K is None:
+            K = self.kernel.compute_gram_matrix(X)
+
         # Define QP and solve it with cvxpy
         alpha = cp.Variable(N_tr)
         objective = cp.Maximize(2 * alpha.T @ y - cp.quad_form(alpha, K))
@@ -57,4 +67,26 @@ class KernelSVM:
         # The optimal value for x is stored in `x.value`.
         self.alpha = alpha.value
 
+        self.sv_idx = (self.alpha > self.epsilon)
+
         return self
+    
+    def predict(self, X_te, outer_K = None):
+        """Creates predictions for new data
+
+        Args:
+            X_te (ndarray of graphs, dim 1): Data to make predictions on.
+            outer_K (ndarray, optional): Precomputed outer gram matrix kernel(X_te, X_tr). Defaults to None, 
+                in which case, the outer gram matrix will be computed with the support vectors only.
+
+        Returns:
+            ndarray, dim 1: predictions. Those are reals (not between 0 and 1).
+        """
+        if outer_K is None:
+            outer_K = self.kernel.compute_outer_gram(X_te, self.X_tr[self.sv_idx])
+            logits = outer_K@self.alpha[self.sv_idx]
+        else:
+            logits = outer_K@self.alpha
+        return logits
+        
+

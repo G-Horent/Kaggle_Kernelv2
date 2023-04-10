@@ -106,7 +106,9 @@ class RandomWalkKernel(Kernel):
         g_prod = graph_product(g1, g2, with_lonely_nodes=self.with_lonely_nodes)
         if g_prod.number_of_edges() == 0:
             return 0
-        W = nx.adjacency_matrix(g_prod)
+        A = nx.adjacency_matrix(g_prod).toarray()
+        degrees = np.sum(A, axis=1, keepdims=True)
+        W = A/np.where(degrees==0, 1, degrees)
         ImW_inv = np.linalg.inv(np.eye(len(g_prod)) - self.lam * W)
         # p_init = np.ones((len(g_prod)))/len(g_prod)
         # k_result = p_init@ImW_inv@np.ones((len(g_prod)))
