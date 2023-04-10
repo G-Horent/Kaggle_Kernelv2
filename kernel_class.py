@@ -14,34 +14,44 @@ class Kernel:
     def __init__(self, name=None, save_kernel=True):
         self.name = name
         self.save_kernel = save_kernel
+        self.K = None
+        self.K_outer = None
 
     def kernel_eval(self, g1, g2):
         return 0
 
     def compute_gram_matrix(self, graph_list):
         nb_graphs = len(graph_list)
-        K = np.zeros((nb_graphs, nb_graphs))
+        self.K = np.zeros((nb_graphs, nb_graphs))
         for i in tqdm(range(nb_graphs)):
             for j in range(i, nb_graphs):
                 k_ij = self.kernel_eval(graph_list[i], graph_list[j])
-                K[i, j] = k_ij
-                K[j, i] = k_ij
+                self.K[i, j] = k_ij
+                self.K[j, i] = k_ij
 
-        if self.save_kernel:
-            now = datetime.now()
-            np.save(f'saved/{self.name}_' + now.strftime("%m%d%_h%m%s") + '.npy', K)
-        return K
+        try:
+            if self.save_kernel:
+                now = datetime.now()
+                now_str = now.strftime("%m%d_%H%M%S%f")
+                np.save(f'saved/{self.name}_{now_str}.npy', self.K)
+        except:
+            print("Warning : Couldn't save kernel matrix")
+        return self.K
 
     def compute_outer_gram(self, graph_list1, graph_list2):
         nb_graphs1, nb_graphs2 = len(graph_list1), len(graph_list2)
-        K = np.zeros((nb_graphs1, nb_graphs2))
+        self.K_outer = np.zeros((nb_graphs1, nb_graphs2))
         for i in tqdm(range(nb_graphs1)):
             for j in range(i, nb_graphs2):
-                K[i, j] = self.kernel_eval(graph_list1[i], graph_list2[j])
-        if self.save_kernel:
-            now = datetime.now()
-            np.save(f'saved/{self.name}_outer_' + now.strftime("%m%d%_h%m%s") + '.npy', K)
-        return K
+                self.K_outer[i, j] = self.kernel_eval(graph_list1[i], graph_list2[j])
+        try:
+            if self.save_kernel:
+                now = datetime.now()
+                now_str = now.strftime("%m%d_%H%M%S%f")
+                np.save(f'saved/{self.name}_outer_{now_str}.npy', self.K_outer)
+        except:
+            print("Warning : Couldn't save outer kernel matrix")
+        return self.K_outer
 
 
 class Kernel_nwalk(Kernel):
