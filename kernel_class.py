@@ -152,7 +152,7 @@ class RandomWalkKernel(Kernel):
                 Defaults to 100.
             save_kernel (bool, optional): Whether we save the kernel at the end of the computation. Defaults to False.
         """
-        super().__init__(name='RandomWalkKernelNaive', save_kernel=save_kernel)
+        super().__init__(name='RandomWalkKernel', save_kernel=save_kernel)
         self.lam = lam
         self.norm1 = norm1
         self.norm2 = norm2
