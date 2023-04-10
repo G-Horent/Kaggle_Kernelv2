@@ -8,11 +8,11 @@ from utils import predictions_to_csv
 
 def get_kernel(name, **kwargs):
     if name == 'KernelRBF':
-        return KernelRBF(sigma=kwargs['sigma'])
+        return KernelRBF(sigma=kwargs['sigma'], **kwargs)
     elif name == 'Kernel_nwalk':
-        return Kernel_nwalk(n=kwargs['n'])
+        return Kernel_nwalk(n=kwargs['n'], **kwargs)
     elif name == 'RandomWalkKernel':
-        return RandomWalkKernel(lam=kwargs['lam_rand_walk'])
+        return RandomWalkKernel(lam=kwargs['lam_rand_walk'], **kwargs)
     else:
         raise NotImplementedError('Unknown kernel')
 
@@ -60,7 +60,7 @@ class KernelLogisticRegression:
 
 
 class KernelSVM(KernelMethod):
-    def __init__(self, lmbd=1., kernel_name='KernelRBF', precomputed_kernel=False, kernel_path='saved/', **kwargs):
+    def __init__(self, lmbd=1., kernel_name='KernelRBF', precomputed_kernel=False, kernel_path='', **kwargs):
         super().__init__(kernel_name=kernel_name, **kwargs)
         self.lmbd = lmbd
         # self.kernel = kernel
@@ -75,8 +75,10 @@ class KernelSVM(KernelMethod):
 
     def fit(self, graph_list_train, y):
         N = graph_list_train.shape[0]
+
         if self.kernel.name == "KernelRBF":
             # If Kernel RBF, compute feature matrix
+            print('Extracting features (KernelRBF)')
             X_train = self.kernel.extract_features(graph_list_train)
 
             # Normalizing features
@@ -89,13 +91,22 @@ class KernelSVM(KernelMethod):
             X_train = graph_list_train
 
         if not self.precomputed_kernel:
+            print('Computing Gram Matrix...')
             K = self.kernel.compute_gram_matrix(X_train)
-            w, v = np.linalg.eigh(K)
 
-            print(K)
-            print(np.linalg.eigh(K))
         else:
             K = np.load(self.kernel_path)
+
+        # Ensure K is PSD, else project it to PSD cone w.r.t. Frobenius norm
+        eigval, eigvec = np.linalg.eigh(K)
+        # Put negative eigenvalues to 0
+        eigval[eigval < 0] = 0
+
+        K = eigvec @ np.diag(eigval) @ eigvec.T
+
+        # Sanity check
+        assert K.shape[0] == N
+        assert K.shape[1] == N
 
         print("Fitting KernelSVM")
         alpha = cp.Variable(N)
@@ -103,7 +114,7 @@ class KernelSVM(KernelMethod):
         constraints = [0 <= cp.multiply(y, alpha), cp.multiply(y, alpha) <= 1 / (2 * self.lmbd * N)]
         start = time()
         prob = cp.Problem(obj, constraints)
-        result = prob.solve()
+        result = prob.solve(verbose=False)
         end = time()
         print(f'QP Solved in {end - start} secs')
         self.alpha = alpha.value

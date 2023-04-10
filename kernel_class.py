@@ -6,12 +6,16 @@ from datetime import datetime
 from data import load_training_data, split_data, load_test_data
 from tqdm import tqdm
 from scipy.spatial import distance_matrix
+import os.path as osp
 
 
 class Kernel:
-    def __init__(self):
+    def __init__(self, **kwargs):
         self.name = None
-        self.save_kernel = True
+        if 'save_path' in kwargs.keys():
+            self.save_path = kwargs['save_path']
+        else:
+            self.save_path = None
 
     def kernel_eval(self, g1, g2):
         return 0
@@ -25,9 +29,9 @@ class Kernel:
                 K[i, j] = k_ij
                 K[j, i] = k_ij
 
-        if self.save_kernel:
+        if self.save_path is not None:
             now = datetime.now()
-            np.save(f'saved/{self.name}_' + now.strftime("%m%d%_h%m%s") + '.npy', K)
+            np.save(osp.join(self.save_path, f'{self.name}_' + now.strftime("%m%d_%H%M%S") + '.npy'), K)
         return K
 
     def compute_outer_gram(self, graph_list1, graph_list2):
@@ -36,17 +40,16 @@ class Kernel:
         for i in tqdm(range(nb_graphs1)):
             for j in range(i, nb_graphs2):
                 K[i, j] = self.kernel_eval(graph_list1[i], graph_list2[j])
-        if self.save_kernel:
+        if self.save_path is not None:
             now = datetime.now()
-            np.save(f'saved/{self.name}_outer_' + now.strftime("%m%d%_h%m%s") + '.npy', K)
+            np.save(osp.join(self.save_path, f'{self.name}_outer_' + now.strftime("%m%d_%H%M%S") + '.npy'), K)
         return K
 
 
 class Kernel_nwalk(Kernel):
-    def __init__(self, n=3, save_kernel=True):
-        super().__init__()
+    def __init__(self, n=3, **kwargs):
+        super().__init__(**kwargs)
         self.n = n
-        self.save_kernel = save_kernel
         self.name = 'Kernel_nwalk'
 
     def kernel_eval(self, graph_1, graph_2):
@@ -59,8 +62,8 @@ class Kernel_nwalk(Kernel):
 
 
 class KernelRBF(Kernel):
-    def __init__(self, sigma=2.0):
-        super().__init__()
+    def __init__(self, sigma=2.0, **kwargs):
+        super().__init__(**kwargs)
         self.sigma = sigma
         self.name = 'KernelRBF'
 
@@ -99,7 +102,7 @@ class KernelRBF(Kernel):
 
 
 class RandomWalkKernel(Kernel):
-    def __init__(self, lam, with_lonely_nodes=True):
+    def __init__(self, lam, with_lonely_nodes=True, **kwargs):
         """
         Params  :
             - lam : float
@@ -107,7 +110,7 @@ class RandomWalkKernel(Kernel):
             - with_lonely_nodes : bool
                 whether or not we must keep lonely nodes on the product graph
         """
-        super().__init__()
+        super().__init__(**kwargs)
         self.lam = lam
         self.with_lonely_nodes = with_lonely_nodes
         self.name = 'RandomWalkKernel'

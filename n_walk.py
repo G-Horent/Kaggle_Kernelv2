@@ -168,6 +168,7 @@ def graph_product(g1, g2, with_lonely_nodes=True):
                 prod_edges.append(((u1, v2), (v1, u2)))
 
     g_prod = nx.Graph(prod_edges)
+    g_prod = nx.convert_node_labels_to_integers(g_prod)
 
     if with_lonely_nodes:
         prod_vertices = []
