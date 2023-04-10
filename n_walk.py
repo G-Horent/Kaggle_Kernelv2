@@ -143,12 +143,12 @@ def product_graph(g1, g2):
     return relabeled_graph
 
 
-def graph_product(g1, g2, with_lonely_nodes=True):
+def graph_product(g1, g2, exclude_lonely_nodes=True):
     """
     Version Léo
     :param g1:
     :param g2:
-    :param with_lonely_nodes:
+    :param exclude_lonely_nodes:
     :return:
     """
     prod_edges = []
@@ -169,7 +169,7 @@ def graph_product(g1, g2, with_lonely_nodes=True):
 
     g_prod = nx.Graph(prod_edges)
 
-    if with_lonely_nodes:
+    if not exclude_lonely_nodes:
         prod_vertices = []
         for v1 in g1.nodes:
             for v2 in g2.nodes:
@@ -184,7 +184,7 @@ def graph_product(g1, g2, with_lonely_nodes=True):
     return g_prod
 
 
-def graph_product_el(g1, g2, with_lonely_nodes=True):
+def graph_product_el(g1, g2, exclude_lonely_nodes=True):
     """Takes into account edges labels"""
     prod_edges = []
     labels1 = nx.get_node_attributes(g1, "labels")
@@ -203,7 +203,7 @@ def graph_product_el(g1, g2, with_lonely_nodes=True):
 
     g_prod = nx.Graph(prod_edges)
 
-    if with_lonely_nodes:
+    if not exclude_lonely_nodes:
         prod_vertices = []
         for v1 in g1.nodes:
             for v2 in g2.nodes:
