@@ -7,17 +7,14 @@ from data import load_training_data, split_data, load_test_data
 from tqdm import tqdm
 from scipy.spatial import distance_matrix
 from itertools import product as iter_product
-from scipy.sparse.linalg import cg, LinearOperator # conjugate gradient
+from scipy.sparse.linalg import cg, LinearOperator  # conjugate gradient
 import os.path as osp
 
 
 class Kernel:
-    def __init__(self, **kwargs):
-        self.name = None
-        if 'save_path' in kwargs.keys():
-            self.save_path = kwargs['save_path']
-        else:
-            self.save_path = None
+    def __init__(self, name, save_kernel):
+        self.name = name
+        self.save_kernel = save_kernel
 
     def kernel_eval(self, g1, g2):
         return 0
@@ -31,9 +28,9 @@ class Kernel:
                 K[i, j] = k_ij
                 K[j, i] = k_ij
 
-        if self.save_path is not None:
+        if self.save_kernel:
             now = datetime.now()
-            np.save(osp.join(self.save_path, f'{self.name}_' + now.strftime("%m%d_%H%M%S") + '.npy'), K)
+            np.save(osp.join('saved', f'{self.name}_' + now.strftime("%m%d_%H%M%S") + '.npy'), K)
         return K
 
     def compute_outer_gram(self, graph_list1, graph_list2):
@@ -42,17 +39,16 @@ class Kernel:
         for i in tqdm(range(nb_graphs1)):
             for j in range(i, nb_graphs2):
                 K[i, j] = self.kernel_eval(graph_list1[i], graph_list2[j])
-        if self.save_path is not None:
+        if self.save_kernel:
             now = datetime.now()
-            np.save(osp.join(self.save_path, f'{self.name}_outer_' + now.strftime("%m%d_%H%M%S") + '.npy'), K)
+            np.save(osp.join('saved', f'{self.name}_outer_' + now.strftime("%m%d_%H%M%S") + '.npy'), K)
         return K
 
 
 class Kernel_nwalk(Kernel):
-    def __init__(self, n=3, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, n=3, save_kernel=True):
+        super().__init__(name='Kernel_nwalk', save_kernel=save_kernel)
         self.n = n
-        self.name = 'Kernel_nwalk'
 
     def kernel_eval(self, graph_1, graph_2):
         prod_graph = product_graph(graph_1, graph_2)
@@ -64,8 +60,8 @@ class Kernel_nwalk(Kernel):
 
 
 class KernelRBF(Kernel):
-    def __init__(self, sigma=2.0, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, sigma=2.0, save_kernel=False):
+        super().__init__(name='KernelRBF', save_kernel=save_kernel)
         self.sigma = sigma
 
     @staticmethod
@@ -103,7 +99,7 @@ class KernelRBF(Kernel):
 
 
 class RandomWalkKernelNaive(Kernel):
-    def __init__(self, lam, norm1 = True, norm2=True, exclude_lonely_nodes=True, save_kernel=False):
+    def __init__(self, lam, norm1=True, norm2=True, exclude_lonely_nodes=True, save_kernel=False):
         """
         Params  :
             - lam : float
@@ -138,24 +134,23 @@ class RandomWalkKernelNaive(Kernel):
 
 
 class RandomWalkKernel(Kernel):
-    def __init__(self, lam, norm1 = True, norm2=False, exclude_intruding_nodes=True, exclude_lonely_nodes=False, fast=True, max_iter = 100, save_kernel=False):
+    def __init__(self, lam, norm1=True, norm2=False, exclude_intruding_nodes=True, exclude_lonely_nodes=False, fast=True, max_iter = 100, save_kernel=False):
         """Initialises RandomWalkKernel class.
 
-        Args:
-            lam (float): parameter to reduce the spectral radius of the matrix, to avoid inversion of singular matrices.
-            norm1 (bool, optional): Whether we normalise the adjacency matrix by the degree. Grakel don't do it but we think its better. Defaults to True.
-            norm2 (bool, optional): Whether we normalise the result by the number of nodes in the product graph (like in the slides). Defaults to False.
-            exclude_intruding_nodes (bool, optional): Whether we remove nodes corresponding to the product of nodes with different labels.
-                Those nodes are automatically considered with the kronecker trick, but we can decide to remove them. Grakel do not remove them. Defaults to True.
-            exclude_lonely_nodes (bool, optional): Whether we remove lonely nodes in the product graph. This is an old option, there is no reason to do so. Defaults to False.
-            fast (bool, optional): Whether we use Conjugate gradient to avoid matrix inversion and accelerate the computations. The computation for this method is inpired by
-                Vishwanathan 2008, and Grakel implementation. Defaults to True.
-            max_iter (int, optional): Max iteration in the conjugate gradient.
-                IMPORTANT :
-                    If norm1 is True, then 100 provides good accuracy, with not much additional time (5ms per graph).
-                    If norm1 is False, 100 leads to much additional time (15ms per graph) (we could then consider 50, 10ms per graph).
-                Defaults to 100.
-            save_kernel (bool, optional): Whether we save the kernel at the end of the computation. Defaults to False.
+        Args: lam (float): parameter to reduce the spectral radius of the matrix, to avoid inversion of singular
+        matrices. norm1 (bool, optional): Whether we normalise the adjacency matrix by the degree. Grakel don't do it
+        but we think its better. Defaults to True. norm2 (bool, optional): Whether we normalise the result by the
+        number of nodes in the product graph (like in the slides). Defaults to False. exclude_intruding_nodes (bool,
+        optional): Whether we remove nodes corresponding to the product of nodes with different labels. Those nodes
+        are automatically considered with the kronecker trick, but we can decide to remove them. Grakel do not remove
+        them. Defaults to True. exclude_lonely_nodes (bool, optional): Whether we remove lonely nodes in the product
+        graph. This is an old option, there is no reason to do so. Defaults to False. fast (bool, optional): Whether
+        we use Conjugate gradient to avoid matrix inversion and accelerate the computations. The computation for this
+        method is inpired by Vishwanathan 2008, and Grakel implementation. Defaults to True. max_iter (int,
+        optional): Max iteration in the conjugate gradient. IMPORTANT : If norm1 is True, then 100 provides good
+        accuracy, with not much additional time (5ms per graph). If norm1 is False, 100 leads to much additional time
+        (15ms per graph) (we could then consider 50, 10ms per graph). Defaults to 100. save_kernel (bool, optional):
+        Whether we save the kernel at the end of the computation. Defaults to False.
         """
         super().__init__(name='RandomWalkKernelNaive', save_kernel=save_kernel)
         self.lam = lam
@@ -252,7 +247,7 @@ class RandomWalkKernel(Kernel):
                 wR = np.zeros((len(gl1), len(gl2)))
                 R = np.reshape(r, (len(gl1), len(gl2)), order='C')
                 for A_sub1, A_sub2 in A_subs:
-                    wR += np.linalg.multi_dot((A_sub1, R, A_sub2.T)) #could be done faster with sparse matrices ?
+                    wR += np.linalg.multi_dot((A_sub1, R, A_sub2.T))  # could be done faster with sparse matrices ?
                 return r - self.lam * wR.flatten(order='C')
 
             LO = LinearOperator((len_prod, len_prod), matvec=lin_op)
@@ -268,11 +263,6 @@ class RandomWalkKernel(Kernel):
             if self.norm2:
                 k_res /= (len_prod - nb_intruding_nodes)
             return k_res
-
-
-
-
-
 
 
 if __name__ == '__main__':

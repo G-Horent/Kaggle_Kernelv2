@@ -20,7 +20,7 @@ def ensemble_predictions(num_splits, kernel_name='KernelRBF'):
 
     for idx, (train_data, train_labels) in enumerate(train_splits):
         print(f"Treating split {idx}")
-        model = KernelSVM(lmbd=0.00001, kernel_name=kernel_name, precomputed_kernel=False, n=3, save_path=path_exp)
+        model = KernelSVM(lmbd=0.00001, kernel_name=kernel_name, precomputed_kernel=False, n=3, save_kernel=True)
         model.fit(train_data, train_labels)
         predictions = model.predict(test_data)
         prediction_final[idx, :] = predictions

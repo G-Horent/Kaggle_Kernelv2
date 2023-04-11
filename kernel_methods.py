@@ -6,20 +6,20 @@ from time import time
 from utils import predictions_to_csv
 
 
-def get_kernel(name, **kwargs):
+def get_kernel(name, save_kernel, **kwargs):
     if name == 'KernelRBF':
-        return KernelRBF(sigma=kwargs['sigma'], **kwargs)
+        return KernelRBF(sigma=kwargs['sigma'], save_kernel=save_kernel)
     elif name == 'Kernel_nwalk':
-        return Kernel_nwalk(n=kwargs['n'], **kwargs)
+        return Kernel_nwalk(n=kwargs['n'], save_kernel=save_kernel)
     elif name == 'RandomWalkKernel':
-        return RandomWalkKernel(lam=kwargs['lam_rand_walk'], **kwargs)
+        return RandomWalkKernel(lam=kwargs['lam_rand_walk'])
     else:
         raise NotImplementedError('Unknown kernel')
 
 
 class KernelMethod:
-    def __init__(self, kernel_name, **kwargs):
-        self.kernel = get_kernel(kernel_name, **kwargs)
+    def __init__(self, kernel_name, save_kernel, **kwargs):
+        self.kernel = get_kernel(kernel_name, save_kernel, **kwargs)
 
     def fit(self, X, y):
         return 0
@@ -58,10 +58,13 @@ class KernelLogisticRegression:
     def __init__(self):
         super().__init__()
 
+    def fit(self, X, y):
+        return 0
+
 
 class KernelSVM(KernelMethod):
-    def __init__(self, lmbd=1., kernel_name='KernelRBF', precomputed_kernel=False, kernel_path='', **kwargs):
-        super().__init__(kernel_name=kernel_name, **kwargs)
+    def __init__(self, lmbd=1., save_kernel=True, kernel_name='KernelRBF', precomputed_kernel=False, kernel_path='', **kwargs):
+        super().__init__(kernel_name=kernel_name, save_kernel=save_kernel, **kwargs)
         self.lmbd = lmbd
         # self.kernel = kernel
         self.alpha = None

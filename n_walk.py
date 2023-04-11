@@ -9,7 +9,7 @@ def kernel_eval(graph_1, graph_2, n):
     prod_graph = product_graph(graph_1, graph_2)
     if prod_graph.number_of_edges() == 0:
         return 0
-    adj_mat = compute_adj_matrix(prod_graph)
+    adj_mat = nx.adjacency_matrix(prod_graph)
     entry = np.sum(np.linalg.matrix_power(adj_mat, n))
     return entry
 
