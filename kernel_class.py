@@ -7,12 +7,11 @@ from data import load_training_data, split_data, load_test_data
 from tqdm import tqdm
 from scipy.spatial import distance_matrix
 from itertools import product as iter_product
-from scipy.sparse.linalg import cg, LinearOperator  # conjugate gradient
-import os.path as osp
+from scipy.sparse.linalg import cg, LinearOperator # conjugate gradient
 
 
 class Kernel:
-    def __init__(self, name, save_kernel):
+    def __init__(self, name=None, save_kernel=True):
         self.name = name
         self.save_kernel = save_kernel
         self.K = None
@@ -30,15 +29,7 @@ class Kernel:
                 self.K[i, j] = k_ij
                 self.K[j, i] = k_ij
 
-        try:
-            if self.save_kernel:
-                now = datetime.now()
-                now_str = now.strftime("%m%d_%H%M%S%f")
-                if save_suf != "":
-                    save_suf = "_" + save_suf
-                np.save(f'saved/{self.name}{save_suf}_{now_str}.npy', self.K)
-        except:
-            print("Warning : Couldn't save kernel matrix")
+        if self.save_kernel: self.save(self.K, outer=False, save_suf=save_suf)
         return self.K
 
     def compute_outer_gram(self, graph_list1, graph_list2, save_suf = ""):
@@ -47,16 +38,23 @@ class Kernel:
         for i in tqdm(range(nb_graphs1)):
             for j in range(i, nb_graphs2):
                 self.K_outer[i, j] = self.kernel_eval(graph_list1[i], graph_list2[j])
+
+        if self.save_kernel: self.save(self.K_outer, outer=True, save_suf=save_suf)
+        return self.K_outer
+
+    def save(self, arr, outer=False, save_suf=""):
         try:
             if self.save_kernel:
                 now = datetime.now()
                 now_str = now.strftime("%m%d_%H%M%S%f")
-                if save_suf != "":
-                    save_suf = "_" + save_suf
-                np.save(f'saved/{self.name}{save_suf}_outer_{now_str}.npy', self.K_outer)
+                save_suf = "" if save_suf == "" else "_" + save_suf
+                outer_suf = "_outer" if outer else ""
+                np.save(f'saved/{self.name}{outer_suf}{save_suf}_{now_str}.npy', arr)
         except:
-            print("Warning : Couldn't save outer kernel matrix")
-        return self.K_outer
+            if outer:
+                print("Warning : Couldn't save outer kernel matrix")
+            else:
+                print("Warning : Couldn't save inner kernel matrix")
 
 
 class Kernel_nwalk(Kernel):
@@ -74,8 +72,8 @@ class Kernel_nwalk(Kernel):
 
 
 class KernelRBF(Kernel):
-    def __init__(self, sigma=2.0, save_kernel=False):
-        super().__init__(name='KernelRBF', save_kernel=save_kernel)
+    def __init__(self, sigma=2.0):
+        super().__init__(name='KernelRBF')
         self.sigma = sigma
 
     @staticmethod
@@ -173,8 +171,11 @@ class RandomWalkKernel(Kernel):
         self.norm2 = norm2
         self.exclude_lonely_nodes = exclude_lonely_nodes
         self.exclude_intruding_nodes = exclude_intruding_nodes
+
         self.fast = fast
         self.max_iter = max_iter
+        self.errors = None
+        self.errors_outer = None
 
         if self.fast and self.exclude_lonely_nodes:
             print("Warning, exclude_lonely_nodes=True is not supported with fast=True. Ignored exclude_lonely_nodes=True")
@@ -201,14 +202,38 @@ class RandomWalkKernel(Kernel):
             filt_adj[(l1, l2)] = A_l1_l2
         return filt_adj, g_labels
     
-    def compute_gram_matrix(self, graph_list, save_suf=""):
+    def compute_gram_matrix(self, graph_list, save_suf = ""):
         processed_graph_list = [self.filter_graph(g) for g in graph_list]
-        return super().compute_gram_matrix(processed_graph_list, save_suf=save_suf)
+        nb_graphs = len(processed_graph_list)
+        self.K = np.zeros((nb_graphs, nb_graphs))
+        self.errors = np.zeros((nb_graphs, nb_graphs), dtype=int)
+        for i in tqdm(range(nb_graphs)):
+            for j in range(i, nb_graphs):
+                k_ij, info = self.kernel_eval(processed_graph_list[i], processed_graph_list[j])
+                self.errors[i,j] = info
+                self.K[i, j] = k_ij
+                self.K[j, i] = k_ij
 
-    def compute_outer_gram(self, graph_list1, graph_list2, save_suf=""):
+        if self.save_kernel: self.save(self.K, outer=False, save_suf=save_suf)
+        return self.K
+
+    def compute_outer_gram(self, graph_list1, graph_list2, save_suf = ""):
         processed_graph_list1 = [self.filter_graph(g) for g in graph_list1]
         processed_graph_list2 = [self.filter_graph(g) for g in graph_list2]
-        return super().compute_outer_gram(processed_graph_list1, processed_graph_list2, save_suf=save_suf)
+        nb_graphs1, nb_graphs2 = len(processed_graph_list1), len(processed_graph_list2)
+        self.K_outer = np.zeros((nb_graphs1, nb_graphs2))
+        self.errors_outer = np.zeros((nb_graphs1, nb_graphs2), dtype=int)
+        for i in tqdm(range(nb_graphs1)):
+            for j in range(i, nb_graphs2):
+                k_ij, info = self.kernel_eval(processed_graph_list1[i], processed_graph_list2[j])
+                self.errors_outer[i,j] = info
+                self.K_outer[i, j] = k_ij
+
+        if self.save_kernel: self.save(self.K_outer, outer=True, save_suf=save_suf)
+        return self.K_outer
+    
+    def kernel_eval_unprocessed(self, g1, g2):
+        return self.kernel_eval(self.filter_graph(g1), self.filter_graph(g2))
     
     def kernel_eval(self, processed_g1, processed_g2):
         """Computes the Rangom walk kernel value of g1 and g2. Warning ! They must be processed
@@ -244,7 +269,7 @@ class RandomWalkKernel(Kernel):
 
             if self.norm2:
                 k_res /= (A_prod.shape[0] + nb_lonely_nodes)
-            return k_res
+            return k_res, 0
 
         else: # Fast method
             #The computation for this method is inpired by Vishwanathan 2008, and Grakel implementation.
@@ -266,7 +291,7 @@ class RandomWalkKernel(Kernel):
                 return r - self.lam * wR.flatten(order='C')
             
             LO = LinearOperator((len_prod, len_prod), matvec=lin_op)
-            sol, _ = cg(LO, np.ones(len_prod), tol=1e-6, maxiter=self.max_iter, atol='legacy')
+            sol, info = cg(LO, np.ones(len_prod), tol=1e-6, maxiter=self.max_iter, atol='legacy')
             
             # A_prod = np.zeros((len_prod, len_prod)) # To delete
             # for lalb in common_labels:
@@ -277,7 +302,7 @@ class RandomWalkKernel(Kernel):
             k_res =  np.sum(sol) - nb_intruding_nodes
             if self.norm2:
                 k_res /= (len_prod - nb_intruding_nodes)
-            return k_res
+            return k_res, info
 
         
 
