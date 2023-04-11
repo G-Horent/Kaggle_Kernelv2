@@ -20,7 +20,7 @@ class Kernel:
     def kernel_eval(self, g1, g2):
         return 0
 
-    def compute_gram_matrix(self, graph_list):
+    def compute_gram_matrix(self, graph_list, save_suf = ""):
         nb_graphs = len(graph_list)
         self.K = np.zeros((nb_graphs, nb_graphs))
         for i in tqdm(range(nb_graphs)):
@@ -33,12 +33,14 @@ class Kernel:
             if self.save_kernel:
                 now = datetime.now()
                 now_str = now.strftime("%m%d_%H%M%S%f")
-                np.save(f'saved/{self.name}_{now_str}.npy', self.K)
+                if save_suf != "":
+                    save_suf = "_" + save_suf
+                np.save(f'saved/{self.name}{save_suf}_{now_str}.npy', self.K)
         except:
             print("Warning : Couldn't save kernel matrix")
         return self.K
 
-    def compute_outer_gram(self, graph_list1, graph_list2):
+    def compute_outer_gram(self, graph_list1, graph_list2, save_suf = ""):
         nb_graphs1, nb_graphs2 = len(graph_list1), len(graph_list2)
         self.K_outer = np.zeros((nb_graphs1, nb_graphs2))
         for i in tqdm(range(nb_graphs1)):
@@ -48,7 +50,9 @@ class Kernel:
             if self.save_kernel:
                 now = datetime.now()
                 now_str = now.strftime("%m%d_%H%M%S%f")
-                np.save(f'saved/{self.name}_outer_{now_str}.npy', self.K_outer)
+                if save_suf != "":
+                    save_suf = "_" + save_suf
+                np.save(f'saved/{self.name}{save_suf}_outer_{now_str}.npy', self.K_outer)
         except:
             print("Warning : Couldn't save outer kernel matrix")
         return self.K_outer
@@ -196,14 +200,14 @@ class RandomWalkKernel(Kernel):
             filt_adj[(l1, l2)] = A_l1_l2
         return filt_adj, g_labels
     
-    def compute_gram_matrix(self, graph_list):
+    def compute_gram_matrix(self, graph_list, save_suf=""):
         processed_graph_list = [self.filter_graph(g) for g in graph_list]
-        return super().compute_gram_matrix(processed_graph_list)
+        return super().compute_gram_matrix(processed_graph_list, save_suf=save_suf)
     
-    def compute_outer_gram(self, graph_list1, graph_list2):
+    def compute_outer_gram(self, graph_list1, graph_list2, save_suf=""):
         processed_graph_list1 = [self.filter_graph(g) for g in graph_list1]
         processed_graph_list2 = [self.filter_graph(g) for g in graph_list2]
-        return super().compute_outer_gram(processed_graph_list1, processed_graph_list2)
+        return super().compute_outer_gram(processed_graph_list1, processed_graph_list2, save_suf=save_suf)
     
     def kernel_eval(self, processed_g1, processed_g2):
         """Computes the Rangom walk kernel value of g1 and g2. Warning ! They must be processed
