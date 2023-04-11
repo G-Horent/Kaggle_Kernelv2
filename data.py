@@ -28,14 +28,15 @@ def load_test_data():
     return testing_data
 
 
-def split_data(n_splits=3):
+def split_data(n_splits=3, return_indices = False):
     training_data, training_labels = load_training_data()
     splitter = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
     spl = list(splitter.split(training_data, training_labels))
     index_splits = [spl[j][1] for j in range(n_splits)]
 
     split_list = [(training_data[curr_idx], training_labels[curr_idx]) for curr_idx in index_splits]
-
+    if return_indices:
+        return split_list, index_splits
     return split_list
 
 

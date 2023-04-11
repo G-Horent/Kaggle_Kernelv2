@@ -15,34 +15,48 @@ class Kernel:
     def __init__(self, name, save_kernel):
         self.name = name
         self.save_kernel = save_kernel
+        self.K = None
+        self.K_outer = None
 
     def kernel_eval(self, g1, g2):
         return 0
 
-    def compute_gram_matrix(self, graph_list):
+    def compute_gram_matrix(self, graph_list, save_suf = ""):
         nb_graphs = len(graph_list)
-        K = np.zeros((nb_graphs, nb_graphs))
+        self.K = np.zeros((nb_graphs, nb_graphs))
         for i in tqdm(range(nb_graphs)):
             for j in range(i, nb_graphs):
                 k_ij = self.kernel_eval(graph_list[i], graph_list[j])
-                K[i, j] = k_ij
-                K[j, i] = k_ij
+                self.K[i, j] = k_ij
+                self.K[j, i] = k_ij
 
-        if self.save_kernel:
-            now = datetime.now()
-            np.save(osp.join('saved', f'{self.name}_' + now.strftime("%m%d_%H%M%S") + '.npy'), K)
-        return K
+        try:
+            if self.save_kernel:
+                now = datetime.now()
+                now_str = now.strftime("%m%d_%H%M%S%f")
+                if save_suf != "":
+                    save_suf = "_" + save_suf
+                np.save(f'saved/{self.name}{save_suf}_{now_str}.npy', self.K)
+        except:
+            print("Warning : Couldn't save kernel matrix")
+        return self.K
 
-    def compute_outer_gram(self, graph_list1, graph_list2):
+    def compute_outer_gram(self, graph_list1, graph_list2, save_suf = ""):
         nb_graphs1, nb_graphs2 = len(graph_list1), len(graph_list2)
-        K = np.zeros((nb_graphs1, nb_graphs2))
+        self.K_outer = np.zeros((nb_graphs1, nb_graphs2))
         for i in tqdm(range(nb_graphs1)):
             for j in range(i, nb_graphs2):
-                K[i, j] = self.kernel_eval(graph_list1[i], graph_list2[j])
-        if self.save_kernel:
-            now = datetime.now()
-            np.save(osp.join('saved', f'{self.name}_outer_' + now.strftime("%m%d_%H%M%S") + '.npy'), K)
-        return K
+                self.K_outer[i, j] = self.kernel_eval(graph_list1[i], graph_list2[j])
+        try:
+            if self.save_kernel:
+                now = datetime.now()
+                now_str = now.strftime("%m%d_%H%M%S%f")
+                if save_suf != "":
+                    save_suf = "_" + save_suf
+                np.save(f'saved/{self.name}{save_suf}_outer_{now_str}.npy', self.K_outer)
+        except:
+            print("Warning : Couldn't save outer kernel matrix")
+        return self.K_outer
 
 
 class Kernel_nwalk(Kernel):
@@ -99,7 +113,7 @@ class KernelRBF(Kernel):
 
 
 class RandomWalkKernelNaive(Kernel):
-    def __init__(self, lam, norm1=True, norm2=True, exclude_lonely_nodes=True, save_kernel=False):
+    def __init__(self, lam, norm1 = True, norm2=True, exclude_lonely_nodes=True, save_kernel=False):
         """
         Params  :
             - lam : float
@@ -134,25 +148,26 @@ class RandomWalkKernelNaive(Kernel):
 
 
 class RandomWalkKernel(Kernel):
-    def __init__(self, lam, norm1=True, norm2=False, exclude_intruding_nodes=True, exclude_lonely_nodes=False, fast=True, max_iter = 100, save_kernel=False):
+    def __init__(self, lam, norm1 = True, norm2=False, exclude_intruding_nodes=True, exclude_lonely_nodes=False, fast=True, max_iter = 100, save_kernel=False):
         """Initialises RandomWalkKernel class.
 
-        Args: lam (float): parameter to reduce the spectral radius of the matrix, to avoid inversion of singular
-        matrices. norm1 (bool, optional): Whether we normalise the adjacency matrix by the degree. Grakel don't do it
-        but we think its better. Defaults to True. norm2 (bool, optional): Whether we normalise the result by the
-        number of nodes in the product graph (like in the slides). Defaults to False. exclude_intruding_nodes (bool,
-        optional): Whether we remove nodes corresponding to the product of nodes with different labels. Those nodes
-        are automatically considered with the kronecker trick, but we can decide to remove them. Grakel do not remove
-        them. Defaults to True. exclude_lonely_nodes (bool, optional): Whether we remove lonely nodes in the product
-        graph. This is an old option, there is no reason to do so. Defaults to False. fast (bool, optional): Whether
-        we use Conjugate gradient to avoid matrix inversion and accelerate the computations. The computation for this
-        method is inpired by Vishwanathan 2008, and Grakel implementation. Defaults to True. max_iter (int,
-        optional): Max iteration in the conjugate gradient. IMPORTANT : If norm1 is True, then 100 provides good
-        accuracy, with not much additional time (5ms per graph). If norm1 is False, 100 leads to much additional time
-        (15ms per graph) (we could then consider 50, 10ms per graph). Defaults to 100. save_kernel (bool, optional):
-        Whether we save the kernel at the end of the computation. Defaults to False.
+        Args:
+            lam (float): parameter to reduce the spectral radius of the matrix, to avoid inversion of singular matrices.
+            norm1 (bool, optional): Whether we normalise the adjacency matrix by the degree. Grakel don't do it but we think its better. Defaults to True.
+            norm2 (bool, optional): Whether we normalise the result by the number of nodes in the product graph (like in the slides). Defaults to False.
+            exclude_intruding_nodes (bool, optional): Whether we remove nodes corresponding to the product of nodes with different labels. 
+                Those nodes are automatically considered with the kronecker trick, but we can decide to remove them. Grakel do not remove them. Defaults to True.
+            exclude_lonely_nodes (bool, optional): Whether we remove lonely nodes in the product graph. This is an old option, there is no reason to do so. Defaults to False.
+            fast (bool, optional): Whether we use Conjugate gradient to avoid matrix inversion and accelerate the computations. The computation for this method is inpired by 
+                Vishwanathan 2008, and Grakel implementation. Defaults to True.
+            max_iter (int, optional): Max iteration in the conjugate gradient. 
+                IMPORTANT :
+                    If norm1 is True, then 100 provides good accuracy, with not much additional time (5ms per graph). 
+                    If norm1 is False, 100 leads to much additional time (15ms per graph) (we could then consider 50, 10ms per graph). 
+                Defaults to 100.
+            save_kernel (bool, optional): Whether we save the kernel at the end of the computation. Defaults to False.
         """
-        super().__init__(name='RandomWalkKernelNaive', save_kernel=save_kernel)
+        super().__init__(name='RandomWalkKernel', save_kernel=save_kernel)
         self.lam = lam
         self.norm1 = norm1
         self.norm2 = norm2
@@ -163,7 +178,7 @@ class RandomWalkKernel(Kernel):
 
         if self.fast and self.exclude_lonely_nodes:
             print("Warning, exclude_lonely_nodes=True is not supported with fast=True. Ignored exclude_lonely_nodes=True")
-
+    
     def filter_graph(self, g):
         """Process a graph to objects needed in kernel computations
 
@@ -185,16 +200,16 @@ class RandomWalkKernel(Kernel):
             A_l1_l2 = (g_labels == l1)[:,None] * A * (g_labels == l2)[None, :] # entries of A corresponding to an edge between a node labeled l1 and a node labeled l2
             filt_adj[(l1, l2)] = A_l1_l2
         return filt_adj, g_labels
-
-    def compute_gram_matrix(self, graph_list):
+    
+    def compute_gram_matrix(self, graph_list, save_suf=""):
         processed_graph_list = [self.filter_graph(g) for g in graph_list]
-        return super().compute_gram_matrix(processed_graph_list)
+        return super().compute_gram_matrix(processed_graph_list, save_suf=save_suf)
 
-    def compute_outer_gram(self, graph_list1, graph_list2):
+    def compute_outer_gram(self, graph_list1, graph_list2, save_suf=""):
         processed_graph_list1 = [self.filter_graph(g) for g in graph_list1]
         processed_graph_list2 = [self.filter_graph(g) for g in graph_list2]
-        return super().compute_outer_gram(processed_graph_list1, processed_graph_list2)
-
+        return super().compute_outer_gram(processed_graph_list1, processed_graph_list2, save_suf=save_suf)
+    
     def kernel_eval(self, processed_g1, processed_g2):
         """Computes the Rangom walk kernel value of g1 and g2. Warning ! They must be processed
 
@@ -223,7 +238,7 @@ class RandomWalkKernel(Kernel):
             elif self.exclude_intruding_nodes:
                 intruding_nodes = gl1[:,None] != gl2[None,:]
                 nb_lonely_nodes -= np.count_nonzero(intruding_nodes)
-
+            
             ImA_inv = np.linalg.inv(np.eye(A_prod.shape[0]) - self.lam * A_prod)
             k_res = np.sum(ImA_inv) + nb_lonely_nodes
 
@@ -235,24 +250,24 @@ class RandomWalkKernel(Kernel):
             #The computation for this method is inpired by Vishwanathan 2008, and Grakel implementation.
 
             A_subs = [(fa1[lalb], fa2[lalb]) for lalb in common_labels]
-
+            
             if self.exclude_intruding_nodes:
                 intruding_nodes = gl1[:,None] != gl2[None,:]
                 nb_intruding_nodes = np.count_nonzero(intruding_nodes)
             else:
                 nb_intruding_nodes = 0
-
+            
             def lin_op(r):
                 # inspired from grakel, but with few corrections
                 wR = np.zeros((len(gl1), len(gl2)))
                 R = np.reshape(r, (len(gl1), len(gl2)), order='C')
                 for A_sub1, A_sub2 in A_subs:
-                    wR += np.linalg.multi_dot((A_sub1, R, A_sub2.T))  # could be done faster with sparse matrices ?
+                    wR += np.linalg.multi_dot((A_sub1, R, A_sub2.T)) #could be done faster with sparse matrices ?
                 return r - self.lam * wR.flatten(order='C')
-
+            
             LO = LinearOperator((len_prod, len_prod), matvec=lin_op)
             sol, _ = cg(LO, np.ones(len_prod), tol=1e-6, maxiter=self.max_iter, atol='legacy')
-
+            
             # A_prod = np.zeros((len_prod, len_prod)) # To delete
             # for lalb in common_labels:
             #     A_prod += np.kron(fa1[lalb], fa2[lalb])
@@ -263,6 +278,11 @@ class RandomWalkKernel(Kernel):
             if self.norm2:
                 k_res /= (len_prod - nb_intruding_nodes)
             return k_res
+
+        
+
+
+
 
 
 if __name__ == '__main__':
