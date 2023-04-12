@@ -1,7 +1,7 @@
 import numpy as np
 import cvxpy as cp
 from data import load_training_data, load_test_data, split_data
-from kernel_class import Kernel_nwalk, RandomWalkKernel, KernelRBF
+from kernel_class import Kernel_nwalk, RandomWalkKernel, KernelRBF, KernelWLSubtree
 from time import time
 from utils import predictions_to_csv
 
@@ -12,9 +12,11 @@ def get_kernel(name, **kwargs):
     elif name == 'Kernel_nwalk':
         return Kernel_nwalk(n=kwargs['n'])
     elif name == 'RandomWalkKernel':
-        adapted_kwargs = {k: v for (k,v) in kwargs.items() if k!='rwlam'}
+        adapted_kwargs = {k: v for (k, v) in kwargs.items() if k != 'rwlam'}
         adapted_kwargs['lam'] = kwargs['rwlam']
         return RandomWalkKernel(lam=kwargs['rwlam'])
+    elif name == 'KernelWLSubtree':
+        return KernelWLSubtree(h=kwargs['h'])
     else:
         raise NotImplementedError('Unknown kernel')
 
@@ -62,7 +64,8 @@ class KernelLogisticRegression:
 
 
 class KernelSVM(KernelMethod):
-    def __init__(self, lmbd=1., kernel_name='KernelRBF', precomputed_kernel=False, balanced = False, kernel_path='saved/', **kwargs):
+    def __init__(self, lmbd=1., kernel_name='KernelRBF', precomputed_kernel=False, balanced=False, kernel_path='saved/',
+                 **kwargs):
         super().__init__(kernel_name=kernel_name, **kwargs)
         self.lmbd = lmbd
         self.balanced = balanced
@@ -95,24 +98,28 @@ class KernelSVM(KernelMethod):
             X_train = graph_list_train
 
         if not self.precomputed_kernel:
+            print('Computing Kernel Gram Matrix...')
             K = self.kernel.compute_gram_matrix(X_train)
-            w, v = np.linalg.eigh(K)
 
-            print(K)
-            print(np.linalg.eigh(K))
         else:
             K = np.load(self.kernel_path)
-        
+
+        w, v = np.linalg.eigh(K)
+        w[w < 0] = 0
+        K = v @ np.diag(w) @ v.T
+
+
+
         if self.balanced:
-            N_pos = np.count_nonzero(y==1)
-            weights = np.where(y==1, N/(2*N_pos), N/(2*(N - N_pos)))
+            N_pos = np.count_nonzero(y == 1)
+            weights = np.where(y == 1, N / (2 * N_pos), N / (2 * (N - N_pos)))
         else:
             weights = np.ones((N))
 
         print("Fitting KernelSVM")
         alpha = cp.Variable(N)
         # obj = cp.Maximize(2 * alpha.T @ y - cp.quad_form(alpha, cp.psd_warp(K)))
-        obj = cp.Maximize(2 * alpha.T @ y - cp.quad_form(alpha, K))
+        obj = cp.Maximize(2 * alpha.T @ y - cp.quad_form(alpha, cp.psd_wrap(K)))
         constraints = [0 <= cp.multiply(y, alpha), cp.multiply(y, alpha) <= weights / (2 * self.lmbd * N)]
         start = time()
         prob = cp.Problem(obj, constraints)
@@ -120,13 +127,13 @@ class KernelSVM(KernelMethod):
         end = time()
         print(f'QP Solved in {end - start} secs')
         self.alpha = alpha.value
-        print(self.alpha)
+        # print(self.alpha)
         idx_alpha_support = np.nonzero(np.abs(self.alpha) > 10e-8)
         print(idx_alpha_support[0].shape)
         self.alpha_support = np.copy(self.alpha[idx_alpha_support])
         self.X_support = np.copy(X_train[idx_alpha_support])
 
-    def predict(self, graph_list_test, precomputed=False, kernel_outer_path = "saved/"):
+    def predict(self, graph_list_test, precomputed=False, kernel_outer_path="saved/"):
         if not precomputed:
             if self.kernel.name == 'KernelRBF':
                 X_test = self.kernel.extract_features(graph_list_test)
@@ -138,17 +145,17 @@ class KernelSVM(KernelMethod):
             print("Computing kernel_outer")
             kernel_outer = self.kernel.compute_outer_gram(X_test, self.X_support)
             return kernel_outer @ self.alpha_support
-        
+
         else:
             kernel_outer = np.load(kernel_outer_path)
             return kernel_outer @ self.alpha
 
-    def score(self, X, y, precomputed=False, kernel_outer_path = "saved/", score_type='accuracy'):
+    def score(self, X, y, precomputed=False, kernel_outer_path="saved/", score_type='accuracy'):
         y_pred = self.predict(X, precomputed=precomputed, kernel_outer_path=kernel_outer_path)
 
         if score_type == 'AUROC':
-            auc = np.count_nonzero(y_pred[y == 1][:,None] > y_pred[y != 1][None, :])
-            auc /= np.count_nonzero(y == 1)*np.count_nonzero(y != 1)
+            auc = np.count_nonzero(y_pred[y == 1][:, None] > y_pred[y != 1][None, :])
+            auc /= np.count_nonzero(y == 1) * np.count_nonzero(y != 1)
             return auc
         else:
             return np.sum(np.sign(y_pred) == y) / y.shape[0]

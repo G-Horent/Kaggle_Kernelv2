@@ -7,7 +7,9 @@ from data import load_training_data, split_data, load_test_data
 from tqdm import tqdm
 from scipy.spatial import distance_matrix
 from itertools import product as iter_product
-from scipy.sparse.linalg import cg, LinearOperator # conjugate gradient
+from scipy.sparse.linalg import cg, LinearOperator  # conjugate gradient
+from collections import defaultdict
+import copy
 
 
 class Kernel:
@@ -20,7 +22,7 @@ class Kernel:
     def kernel_eval(self, g1, g2):
         return 0
 
-    def compute_gram_matrix(self, graph_list, save_suf = ""):
+    def compute_gram_matrix(self, graph_list, save_suf=""):
         nb_graphs = len(graph_list)
         self.K = np.zeros((nb_graphs, nb_graphs))
         for i in tqdm(range(nb_graphs)):
@@ -32,7 +34,7 @@ class Kernel:
         if self.save_kernel: self.save(self.K, outer=False, save_suf=save_suf)
         return self.K
 
-    def compute_outer_gram(self, graph_list1, graph_list2, save_suf = ""):
+    def compute_outer_gram(self, graph_list1, graph_list2, save_suf=""):
         nb_graphs1, nb_graphs2 = len(graph_list1), len(graph_list2)
         self.K_outer = np.zeros((nb_graphs1, nb_graphs2))
         for i in tqdm(range(nb_graphs1)):
@@ -101,17 +103,17 @@ class KernelRBF(Kernel):
 
     def kernel_eval(self, g1, g2):
         feat = self.extract_features([g1, g2])
-        return np.exp(-(np.linalg.norm(feat[0, :] - feat[1, :])**2)/(2 * self.sigma**2))
+        return np.exp(-(np.linalg.norm(feat[0, :] - feat[1, :]) ** 2) / (2 * self.sigma ** 2))
 
     def compute_gram_matrix(self, X):
-        return np.exp(-(distance_matrix(X, X)**2)/(2 * (self.sigma**2)))
+        return np.exp(-(distance_matrix(X, X) ** 2) / (2 * (self.sigma ** 2)))
 
     def compute_outer_gram(self, X1, X2):
-        return np.exp(-(distance_matrix(X1, X2)**2)/(2 * (self.sigma**2)))
+        return np.exp(-(distance_matrix(X1, X2) ** 2) / (2 * (self.sigma ** 2)))
 
 
 class RandomWalkKernelNaive(Kernel):
-    def __init__(self, lam, norm1 = True, norm2=True, exclude_lonely_nodes=True, save_kernel=False):
+    def __init__(self, lam, norm1=True, norm2=True, exclude_lonely_nodes=True, save_kernel=False):
         """
         Params  :
             - lam : float
@@ -133,20 +135,21 @@ class RandomWalkKernelNaive(Kernel):
         A = nx.adjacency_matrix(g_prod).toarray()
         if self.norm1:
             degrees = np.sum(A, axis=1, keepdims=True)
-            W = A/np.where(degrees==0, 1, degrees)
-        else :
+            W = A / np.where(degrees == 0, 1, degrees)
+        else:
             W = A
 
         ImW_inv = np.linalg.inv(np.eye(len(g_prod)) - self.lam * W)
 
-        k_result = np.sum(ImW_inv)    # ones.T @ (I - lam W)^(-1) @ ones
+        k_result = np.sum(ImW_inv)  # ones.T @ (I - lam W)^(-1) @ ones
         if self.norm2:
-            k_result /= len(g_prod)   # 1/n * ones.T @ (I - lam W)^(-1) @ ones
+            k_result /= len(g_prod)  # 1/n * ones.T @ (I - lam W)^(-1) @ ones
         return k_result
 
 
 class RandomWalkKernel(Kernel):
-    def __init__(self, lam, norm1 = True, norm2=False, exclude_intruding_nodes=True, exclude_lonely_nodes=False, fast=True, max_iter = 100, save_kernel=False):
+    def __init__(self, lam, norm1=True, norm2=False, exclude_intruding_nodes=True, exclude_lonely_nodes=False,
+                 fast=True, max_iter=100, save_kernel=False):
         """Initialises RandomWalkKernel class.
 
         Args:
@@ -178,8 +181,9 @@ class RandomWalkKernel(Kernel):
         self.errors_outer = None
 
         if self.fast and self.exclude_lonely_nodes:
-            print("Warning, exclude_lonely_nodes=True is not supported with fast=True. Ignored exclude_lonely_nodes=True")
-    
+            print(
+                "Warning, exclude_lonely_nodes=True is not supported with fast=True. Ignored exclude_lonely_nodes=True")
+
     def filter_graph(self, g):
         """Process a graph to objects needed in kernel computations
 
@@ -195,14 +199,15 @@ class RandomWalkKernel(Kernel):
         A = nx.adjacency_matrix(g).toarray()
         if self.norm1:
             degrees = np.sum(A, axis=1, keepdims=True)
-            A = A/np.where(degrees == 0, 1, degrees) # Markov transition matrix
+            A = A / np.where(degrees == 0, 1, degrees)  # Markov transition matrix
         filt_adj = {}
         for (l1, l2) in iter_product(g_labels, g_labels):
-            A_l1_l2 = (g_labels == l1)[:,None] * A * (g_labels == l2)[None, :] # entries of A corresponding to an edge between a node labeled l1 and a node labeled l2
+            A_l1_l2 = (g_labels == l1)[:, None] * A * (g_labels == l2)[None,
+                                                      :]  # entries of A corresponding to an edge between a node labeled l1 and a node labeled l2
             filt_adj[(l1, l2)] = A_l1_l2
         return filt_adj, g_labels
-    
-    def compute_gram_matrix(self, graph_list, save_suf = ""):
+
+    def compute_gram_matrix(self, graph_list, save_suf=""):
         processed_graph_list = [self.filter_graph(g) for g in graph_list]
         nb_graphs = len(processed_graph_list)
         self.K = np.zeros((nb_graphs, nb_graphs))
@@ -210,14 +215,14 @@ class RandomWalkKernel(Kernel):
         for i in tqdm(range(nb_graphs)):
             for j in range(i, nb_graphs):
                 k_ij, info = self.kernel_eval(processed_graph_list[i], processed_graph_list[j])
-                self.errors[i,j] = info
+                self.errors[i, j] = info
                 self.K[i, j] = k_ij
                 self.K[j, i] = k_ij
 
         if self.save_kernel: self.save(self.K, outer=False, save_suf=save_suf)
         return self.K
 
-    def compute_outer_gram(self, graph_list1, graph_list2, save_suf = ""):
+    def compute_outer_gram(self, graph_list1, graph_list2, save_suf=""):
         processed_graph_list1 = [self.filter_graph(g) for g in graph_list1]
         processed_graph_list2 = [self.filter_graph(g) for g in graph_list2]
         nb_graphs1, nb_graphs2 = len(processed_graph_list1), len(processed_graph_list2)
@@ -226,15 +231,15 @@ class RandomWalkKernel(Kernel):
         for i in tqdm(range(nb_graphs1)):
             for j in range(i, nb_graphs2):
                 k_ij, info = self.kernel_eval(processed_graph_list1[i], processed_graph_list2[j])
-                self.errors_outer[i,j] = info
+                self.errors_outer[i, j] = info
                 self.K_outer[i, j] = k_ij
 
         if self.save_kernel: self.save(self.K_outer, outer=True, save_suf=save_suf)
         return self.K_outer
-    
+
     def kernel_eval_unprocessed(self, g1, g2):
         return self.kernel_eval(self.filter_graph(g1), self.filter_graph(g2))
-    
+
     def kernel_eval(self, processed_g1, processed_g2):
         """Computes the Rangom walk kernel value of g1 and g2. Warning ! They must be processed
 
@@ -242,11 +247,11 @@ class RandomWalkKernel(Kernel):
             processed_g1 (tuple(dict, ndarray)): object return by self.filter_graph
             processed_g2 (tuple(dict, ndarray)): object return by self.filter_graph
         """
-        fa1, gl1 = processed_g1 # filtered adjacency matrix, graph labels
+        fa1, gl1 = processed_g1  # filtered adjacency matrix, graph labels
         fa2, gl2 = processed_g2
 
         common_labels = set(fa1.keys()) & set(fa2.keys())
-        len_prod = len(gl1)*len(gl2)
+        len_prod = len(gl1) * len(gl2)
 
         if not self.fast:
             A_prod = np.zeros((len_prod, len_prod))
@@ -255,15 +260,15 @@ class RandomWalkKernel(Kernel):
             # A_prod is now the adj matrix of the product graph (with intruding nodes)
 
             degrees = np.sum(A_prod, axis=1)
-            nb_lonely_nodes = np.count_nonzero(degrees == 0) # we will add this quantity at the end
-            A_prod = A_prod[np.ix_(degrees !=0, degrees!=0)]
+            nb_lonely_nodes = np.count_nonzero(degrees == 0)  # we will add this quantity at the end
+            A_prod = A_prod[np.ix_(degrees != 0, degrees != 0)]
 
             if self.exclude_lonely_nodes:
                 nb_lonely_nodes = 0
             elif self.exclude_intruding_nodes:
-                intruding_nodes = gl1[:,None] != gl2[None,:]
+                intruding_nodes = gl1[:, None] != gl2[None, :]
                 nb_lonely_nodes -= np.count_nonzero(intruding_nodes)
-            
+
             ImA_inv = np.linalg.inv(np.eye(A_prod.shape[0]) - self.lam * A_prod)
             k_res = np.sum(ImA_inv) + nb_lonely_nodes
 
@@ -271,43 +276,132 @@ class RandomWalkKernel(Kernel):
                 k_res /= (A_prod.shape[0] + nb_lonely_nodes)
             return k_res, 0
 
-        else: # Fast method
-            #The computation for this method is inpired by Vishwanathan 2008, and Grakel implementation.
+        else:  # Fast method
+            # The computation for this method is inpired by Vishwanathan 2008, and Grakel implementation.
 
             A_subs = [(fa1[lalb], fa2[lalb]) for lalb in common_labels]
-            
+
             if self.exclude_intruding_nodes:
-                intruding_nodes = gl1[:,None] != gl2[None,:]
+                intruding_nodes = gl1[:, None] != gl2[None, :]
                 nb_intruding_nodes = np.count_nonzero(intruding_nodes)
             else:
                 nb_intruding_nodes = 0
-            
+
             def lin_op(r):
                 # inspired from grakel, but with few corrections
                 wR = np.zeros((len(gl1), len(gl2)))
                 R = np.reshape(r, (len(gl1), len(gl2)), order='C')
                 for A_sub1, A_sub2 in A_subs:
-                    wR += np.linalg.multi_dot((A_sub1, R, A_sub2.T)) #could be done faster with sparse matrices ?
+                    wR += np.linalg.multi_dot((A_sub1, R, A_sub2.T))  # could be done faster with sparse matrices ?
                 return r - self.lam * wR.flatten(order='C')
-            
+
             LO = LinearOperator((len_prod, len_prod), matvec=lin_op)
             sol, info = cg(LO, np.ones(len_prod), tol=1e-6, maxiter=self.max_iter, atol='legacy')
-            
+
             # A_prod = np.zeros((len_prod, len_prod)) # To delete
             # for lalb in common_labels:
             #     A_prod += np.kron(fa1[lalb], fa2[lalb])
             # M = np.eye(A_prod.shape[0]) - self.lam * A_prod
             # print(np.max(np.abs(1 - lin_op(sol))), np.max(np.abs(1 - M@sol)), np.max(np.abs(sol)))
 
-            k_res =  np.sum(sol) - nb_intruding_nodes
+            k_res = np.sum(sol) - nb_intruding_nodes
             if self.norm2:
                 k_res /= (len_prod - nb_intruding_nodes)
             return k_res, info
 
-        
 
+class KernelWLSubtree(Kernel):
+    def __init__(self, h=5):
+        super().__init__(name='KernelWLSubtree', save_kernel=True)
+        self.h = h
+        self.train_dict_correspondences = None
 
+    def compute_dicts_occurences_correspondences(self, graph_list, dict_correspondences=None):
+        N = len(graph_list)
+        dict_counting_occurences = {it: {i: defaultdict(lambda: 0) for i in range(N)} for it in range(self.h + 1)}
+        # Initializing dictionary of correspondences
+        if dict_correspondences is None:
+            dict_correspondences = {it: {} for it in range(1, self.h + 1)}
 
+        # Iteration 0
+        graph_labels = {}
+
+        for idx_graph, curr_graph in enumerate(graph_list):
+            list_labels = get_labels_nodes(curr_graph)
+            unique_labels, occ = np.unique(list_labels, return_counts=True)
+
+            graph_labels[idx_graph] = list_labels
+            for curr_label, curr_occ in zip(unique_labels, occ):
+                dict_counting_occurences[0][idx_graph][curr_label] = curr_occ
+
+        next_labels = copy.deepcopy(graph_labels)
+
+        # Through each iteration now
+        for it in tqdm(range(1, self.h + 1)):
+            for idx_graph, curr_graph in enumerate(graph_list):
+                for node in curr_graph.nodes():
+                    node_label = graph_labels[idx_graph][node]
+                    neighbors = list(curr_graph.neighbors(node))
+                    neighbors_label = [graph_labels[idx_graph][neigh] for neigh in neighbors]
+                    node_label = str(node_label) + "-" + str(sorted(neighbors_label))
+
+                    if node_label not in dict_correspondences[it]:
+                        dict_correspondences[it][node_label] = len(dict_correspondences[it])
+
+                    next_labels[idx_graph][node] = dict_correspondences[it][node_label]
+                    dict_counting_occurences[it][idx_graph][node_label] = dict_counting_occurences[it][idx_graph].get(
+                        node_label, 0) + 1
+
+            graph_labels = copy.deepcopy(next_labels)
+
+        return dict_counting_occurences, dict_correspondences
+
+    def compute_gram_matrix(self, graph_list, save_suf=""):
+        N = len(graph_list)
+        dict_counting_occurences, self.train_dict_correspondences = self.compute_dicts_occurences_correspondences(
+            graph_list)
+
+        print("finished computing the occurences")
+        print("Computing the inner matrix")
+
+        K = np.zeros((N, N))
+        for i in tqdm(range(N)):
+            for j in range(i, N):
+                k_ij = 0
+                for it in range(0, self.h + 1):
+                    common_keys = set(dict_counting_occurences[it][i].keys()) & set(
+                        dict_counting_occurences[it][j].keys())
+                    k_ij += sum(
+                        [dict_counting_occurences[it][i].get(k, 0) * dict_counting_occurences[it][j].get(k, 0) for k in
+                         common_keys])
+
+                K[i, j] = k_ij
+                K[j, i] = k_ij
+
+        if self.save_kernel: self.save(K, outer=False, save_suf='all')
+        return K
+
+    def compute_outer_gram(self, graph_list1, graph_list2, save_suf=""):
+        N1, N2 = len(graph_list1), len(graph_list2)
+        occurences_1, _ = self.compute_dicts_occurences_correspondences(graph_list1,
+                                                                        dict_correspondences=self.train_dict_correspondences)
+        occurences_2, dict_final = self.compute_dicts_occurences_correspondences(graph_list2,
+                                                                                 dict_correspondences=self.train_dict_correspondences)
+
+        K = np.zeros((N1, N2))
+        for i in tqdm(range(N1)):
+            for j in range(N2):
+                k_ij = 0
+                for it in range(0, self.h + 1):
+                    common_keys = set(occurences_1[it][i].keys()) & set(
+                        occurences_2[it][j].keys())
+                    k_ij += sum([occurences_1[it][i].get(k, 0) * occurences_2[it][j].get(k, 0) for k in
+                                 common_keys])
+
+                K[i, j] = k_ij
+
+        if self.save_kernel: self.save(K, outer=True, save_suf='all')
+        return K
 
 
 if __name__ == '__main__':
@@ -318,10 +412,15 @@ if __name__ == '__main__':
 
     nb_subset = 0
     train_subset = training_split[nb_subset][0]
-    kernel_class = KernelRBF(sigma=2.0)
-    features = kernel_class.extract_features(training_list)
-    gram = kernel_class.compute_gram_matrix(features)
-    print(gram.shape)
-    print(np.linalg.eigh(gram))
+    # kernel_class = KernelRBF(sigma=2.0)
+    # features = kernel_class.extract_features(training_list)
+    # gram = kernel_class.compute_gram_matrix(features)
+    # print(gram.shape)
+    # print(np.linalg.eigh(gram))
     # test_k = Kernel_nwalk(n=length_walk, save_kernel=True).gram_cross(train_subset, test_list)
     # np.save(f'saved/test/walk_kernel_3_eval_subset_{nb_subset}_.npy', test_k)
+
+    kernel_class = KernelWLSubtree(h=5)
+    dic_occ = kernel_class.compute_gram_matrix(training_list)
+    kernel_outer = kernel_class.compute_outer_gram(test_list, training_list)
+    # print(dic_occ)
