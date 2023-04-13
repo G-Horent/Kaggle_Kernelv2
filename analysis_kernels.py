@@ -19,6 +19,10 @@ def normalize(K, eps=0):
     K_norm = K/np.sqrt(K_diag[:,None] * K_diag[None,:] + eps)
     return K_norm
 
+def outer_normalize(K_outer, diag1, diag2, eps=0):
+    K_norm = K_outer/np.sqrt(diag1[:,None]*diag2[None,:] + eps)
+    return K_norm
+
 def psdfy(K, eps = 0):
     w, v = np.linalg.eigh(K)
     w_pos_part = np.maximum(eps, w)
