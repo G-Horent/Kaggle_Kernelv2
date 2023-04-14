@@ -33,37 +33,6 @@ class KernelMethod:
         return 0
 
 
-class KernelRidgeRegression(KernelMethod):
-    def __init__(self, lmbd=1.0, kernel_name='n_walk', precomputed=True, **kwargs):
-        super().__init__(kernel_name, **kwargs)
-        self.lmbd = lmbd
-        self.alpha = None
-        self.precomputed = precomputed
-        if self.precomputed:
-            pass
-        else:
-            self.kernel = Kernel_nwalk(n=3)
-
-    def fit(self, X, y):
-        n = y.shape[0]
-        K = self.kernel
-
-        self.alpha = np.linalg.inv(K + self.lmbd * n * np.eye(n)) @ y
-
-    def predict(self, X):
-        return 0
-        # TODO : add prediction
-
-    def score(self, X, y):
-        return 0
-        # TODO:
-
-
-class KernelLogisticRegression:
-    def __init__(self):
-        super().__init__()
-
-
 class KernelSVM(KernelMethod):
     def __init__(self, lmbd=1., kernel_name='KernelRBF', precomputed_kernel=False, balanced=False, kernel_path='saved/',
                  **kwargs):
@@ -108,8 +77,6 @@ class KernelSVM(KernelMethod):
         w, v = np.linalg.eigh(K)
         w[w < 0] = 0
         K = v @ np.diag(w) @ v.T
-
-
 
         if self.balanced:
             N_pos = np.count_nonzero(y == 1)
@@ -163,7 +130,7 @@ class KernelSVM(KernelMethod):
 
 
 class KernelSVM2():
-    def __init__(self, lmbd=1., balanced = False, kernel=None):
+    def __init__(self, lmbd=1., balanced=False, kernel=None):
         """
         Args:
             lmbd (float, optional): Penalisation parameter. Defaults to 1..
@@ -180,7 +147,7 @@ class KernelSVM2():
 
         self.alpha = None
         self.alpha_support = None
-    
+
     def optimise(self, K, y, c, method="cvxopt"):
         N = K.shape[0]
         if method == "cvxpy":
@@ -196,19 +163,19 @@ class KernelSVM2():
 
             print(f'QP Solved in {end - start} secs')
             return alpha.value
-        
+
         else:
             # min 1/2*(x^T)Qx + (p^T)x     st Gx <= h and Ax = b
             P = matrix(K)
             q = - matrix(y.astype(float))
             G = matrix(np.concatenate([-np.diag(y), np.diag(y)], axis=0).astype(float))
             h = matrix(np.concatenate([np.zeros(N), c]))
-            A = matrix(np.ones((1,N))) # if we want to take the version with b
+            A = matrix(np.ones((1, N)))  # if we want to take the version with b
             # A = matrix(np.zeros((1,N)))
             b = matrix(0.)
             sol = solvers.qp(P, q, G, h, A, b)
             return np.array(sol["x"]).flatten()
-    
+
     def fit(self, K, y, X_train=None):
         """Fit the SVM to the corresponding kernel matrix and labels
 
@@ -218,10 +185,10 @@ class KernelSVM2():
             X_train (ndarray of graphs, optional): Corresponding graphs. Not used except to save in an attribute, for future predictions. Defaults to None.
         """
         N = K.shape[0]
-        
+
         if self.balanced:
-            N_pos = np.count_nonzero(y==1)
-            weights = np.where(y==1, N/(2*N_pos), N/(2*(N - N_pos)))
+            N_pos = np.count_nonzero(y == 1)
+            weights = np.where(y == 1, N / (2 * N_pos), N / (2 * (N - N_pos)))
         else:
             weights = np.ones((N))
 
@@ -237,20 +204,21 @@ class KernelSVM2():
         print(len(idx_alpha_support))
         print(len(idx_alpha_margin))
 
-        b_candi = y - K[:,idx_alpha_support]@self.alpha_support # we could have said y - K@self.alpha, but implies errors
+        b_candi = y - K[:,
+                      idx_alpha_support] @ self.alpha_support  # we could have said y - K@self.alpha, but implies errors
         if len(idx_alpha_margin) > 0:
-            self.b = np.median(b_candi[idx_alpha_margin]) # offset of the classifier
+            self.b = np.median(b_candi[idx_alpha_margin])  # offset of the classifier
         else:
             self.b = 0
-    
+
     def fit_saved(self, kernel_path, y, X_train=None):
         K = np.load(kernel_path)
         return self.fit(K, y, X_train=X_train)
-    
+
     def fit_compute(self, graph_list_train, y):
         if self.kernel is None:
             raise AttributeError("fit_compute needs attribute kernel to be difined")
-        
+
         if self.kernel.name == "KernelRBF":
             # If Kernel RBF, compute feature matrix
             X_train = self.kernel.extract_features(graph_list_train)
@@ -265,24 +233,25 @@ class KernelSVM2():
             X_train = graph_list_train
         K = self.kernel.compute_gram_matrix(X_train)
         return self.fit(K, y, X_train=X_train)
-    
+
     def predict(self, K_outer):
         if self.alpha is None:
             raise AttributeError("The model has to be fitted first before predictions")
         return K_outer @ self.alpha + self.b
-    
-    def predict_saved(self, outer_kernel_path = "saved/"):
+
+    def predict_saved(self, outer_kernel_path="saved/"):
         K_outer = np.load(outer_kernel_path)
         return self.predict(K_outer)
-    
+
     def predict_compute(self, graph_list_test):
         if self.kernel is None:
             raise AttributeError("predict_compute needs attribute kernel to be difined.")
         if self.X_support is None:
-            raise AttributeError("predict_compute needs X_train to have been filled in previously in the fit operation.")
+            raise AttributeError(
+                "predict_compute needs X_train to have been filled in previously in the fit operation.")
         if self.alpha_support is None:
             raise AttributeError("The model has to be fitted first before predictions")
-        
+
         if self.kernel.name == 'KernelRBF':
             X_test = self.kernel.extract_features(graph_list_test)
             X_test = (X_test - self.X_mean) / self.X_std
@@ -297,28 +266,23 @@ class KernelSVM2():
     def _score(self, y_true, y_pred, score_type='accuracy'):
 
         if score_type == 'AUROC':
-            auc = np.count_nonzero(y_pred[y_true == 1][:,None] > y_pred[y_true != 1][None, :])
-            auc /= np.count_nonzero(y_true == 1)*np.count_nonzero(y_true != 1)
+            auc = np.count_nonzero(y_pred[y_true == 1][:, None] > y_pred[y_true != 1][None, :])
+            auc /= np.count_nonzero(y_true == 1) * np.count_nonzero(y_true != 1)
             return auc
         else:
             return np.sum(np.sign(y_pred) == y_true) / y_true.shape[0]
-    
+
     def score(self, K_outer, y_true, score_type='accuracy'):
         y_pred = self.predict(K_outer)
         return self._score(y_true, y_pred, score_type=score_type)
-    
+
     def score_saved(self, outer_kernel_path, y_true, score_type='accuracy'):
         y_pred = self.predict_saved(outer_kernel_path)
         return self._score(y_true, y_pred, score_type=score_type)
-    
+
     def score_compute(self, graph_list_test, y_true, score_type='accuracy'):
         y_pred = self.predict_compute(graph_list_test)
         return self._score(y_true, y_pred, score_type=score_type)
-    
-    
-
-
-
 
 
 if __name__ == '__main__':

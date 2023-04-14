@@ -360,7 +360,6 @@ class KernelWLSubtree(Kernel):
         dict_counting_occurences, self.train_dict_correspondences = self.compute_dicts_occurences_correspondences(
             graph_list)
 
-        print("finished computing the occurences")
         print("Computing the inner matrix")
 
         K = np.zeros((N, N))
