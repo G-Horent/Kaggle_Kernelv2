@@ -65,12 +65,8 @@ class KernelLogisticRegression:
 
 
 class KernelSVM(KernelMethod):
-<<<<<<< HEAD
     def __init__(self, lmbd=1., kernel_name='KernelRBF', precomputed_kernel=False, balanced=False, kernel_path='saved/',
                  **kwargs):
-=======
-    def __init__(self, lmbd=1., balanced = False, precomputed_kernel=False, kernel_path='saved/', kernel_name='KernelRBF', **kwargs):
->>>>>>> 64fff42c22df3703069dc279c649e991f6e54982
         super().__init__(kernel_name=kernel_name, **kwargs)
         self.lmbd = lmbd
         self.balanced = balanced
@@ -123,12 +119,8 @@ class KernelSVM(KernelMethod):
 
         print("Fitting KernelSVM")
         alpha = cp.Variable(N)
-<<<<<<< HEAD
         # obj = cp.Maximize(2 * alpha.T @ y - cp.quad_form(alpha, cp.psd_warp(K)))
         obj = cp.Maximize(2 * alpha.T @ y - cp.quad_form(alpha, cp.psd_wrap(K)))
-=======
-        obj = cp.Maximize(2 * alpha.T @ y - cp.quad_form(alpha, cp.psd_warp(K)))
->>>>>>> 64fff42c22df3703069dc279c649e991f6e54982
         constraints = [0 <= cp.multiply(y, alpha), cp.multiply(y, alpha) <= weights / (2 * self.lmbd * N)]
         start = time()
         prob = cp.Problem(obj, constraints)

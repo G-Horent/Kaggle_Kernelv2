@@ -181,8 +181,7 @@ class RandomWalkKernel(Kernel):
         self.errors_outer = None
 
         if self.fast and self.exclude_lonely_nodes:
-            print(
-                "Warning, exclude_lonely_nodes=True is not supported with fast=True. Ignored exclude_lonely_nodes=True")
+            print("Warning, exclude_lonely_nodes=True is not supported with fast=True. Ignored exclude_lonely_nodes=True")
 
     def filter_graph(self, g):
         """Process a graph to objects needed in kernel computations
@@ -202,8 +201,8 @@ class RandomWalkKernel(Kernel):
             A = A / np.where(degrees == 0, 1, degrees)  # Markov transition matrix
         filt_adj = {}
         for (l1, l2) in iter_product(g_labels, g_labels):
-            A_l1_l2 = (g_labels == l1)[:, None] * A * (g_labels == l2)[None,
-                                                      :]  # entries of A corresponding to an edge between a node labeled l1 and a node labeled l2
+            A_l1_l2 = (g_labels == l1)[:, None] * A * (g_labels == l2)[None,:] 
+                # entries of A corresponding to an edge between a node labeled l1 and a node labeled l2
             filt_adj[(l1, l2)] = A_l1_l2
         return filt_adj, g_labels
 
