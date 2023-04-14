@@ -1,4 +1,5 @@
 /saved/*.npy
 test.py
 *.csv
-/submissions
+/submissions/
+/__pycache__/
