@@ -4,7 +4,7 @@ import networkx as nx
 
 
 def predictions_to_csv(filename, predictions):
-    ids = list(range(1, 2001))
+    ids = list(range(1, len(predictions) + 1))
     df = pd.DataFrame({"Id": ids, "Predicted": predictions})
     df.to_csv(filename, sep=',', index=False)
 

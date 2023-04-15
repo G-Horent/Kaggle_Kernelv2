@@ -1,6 +1,6 @@
 import networkx as nx
 import numpy as np
-from n_walk import product_graph, compute_adj_matrix, get_labels_nodes, get_labels_edges, get_degrees, graph_product, \
+from walk import product_graph, compute_adj_matrix, get_labels_nodes, get_labels_edges, get_degrees, graph_product, \
     compute_diameter, check_cycle
 from datetime import datetime
 from data import load_training_data, split_data, load_test_data
@@ -12,7 +12,9 @@ from collections import defaultdict
 import copy
 
 
-class Kernel:
+
+
+class Kernel(object):
     def __init__(self, name=None, save_kernel=True):
         self.name = name
         self.save_kernel = save_kernel
@@ -25,24 +27,38 @@ class Kernel:
     def compute_gram_matrix(self, graph_list, save_suf=""):
         nb_graphs = len(graph_list)
         self.K = np.zeros((nb_graphs, nb_graphs))
+
+        # Computation of the inner gram matrix
         for i in tqdm(range(nb_graphs)):
             for j in range(i, nb_graphs):
                 k_ij = self.kernel_eval(graph_list[i], graph_list[j])
                 self.K[i, j] = k_ij
                 self.K[j, i] = k_ij
+        
+        # Post processing (psdfication, normalisation, ...)
+        K_pp = self.post_process_inner(self.K)
 
-        if self.save_kernel: self.save(self.K, outer=False, save_suf=save_suf)
-        return self.K
+        # Saving matrix
+        if self.save_kernel: self.save(K_pp, outer=False, save_suf=save_suf)
+
+        return K_pp
 
     def compute_outer_gram(self, graph_list1, graph_list2, save_suf=""):
         nb_graphs1, nb_graphs2 = len(graph_list1), len(graph_list2)
         self.K_outer = np.zeros((nb_graphs1, nb_graphs2))
+
+        # Computing the outer gram matrix
         for i in tqdm(range(nb_graphs1)):
             for j in range(i, nb_graphs2):
                 self.K_outer[i, j] = self.kernel_eval(graph_list1[i], graph_list2[j])
 
-        if self.save_kernel: self.save(self.K_outer, outer=True, save_suf=save_suf)
-        return self.K_outer
+        # Post processing (normalisation, ...)
+        K_outer_pp = self.post_process_outer(self.K_outer)
+
+        # Saving matrix
+        if self.save_kernel: self.save(K_outer_pp, outer=True, save_suf=save_suf)
+
+        return K_outer_pp
 
     def save(self, arr, outer=False, save_suf=""):
         try:
@@ -57,6 +73,30 @@ class Kernel:
                 print("Warning : Couldn't save outer kernel matrix")
             else:
                 print("Warning : Couldn't save inner kernel matrix")
+    
+    def post_process_inner(self, K_inner):
+        return self.psdfy(K_inner)
+    
+    def post_process_outer(self, K_outer):
+        return K_outer
+
+    def psdfy(self, K, eps = 0):
+        w, v = np.linalg.eigh(K)
+        w_pos_part = np.maximum(eps, w)
+        K_psd = v @ np.diag(w_pos_part) @ v.T
+        K_psd = (K_psd + K_psd.T)/2
+        return K_psd
+        
+    def normalize(self, K, eps=0):
+        K_diag = K[np.arange(K.shape[0]), np.arange(K.shape[0])]
+        K_norm = K/np.sqrt(K_diag[:,None] * K_diag[None,:] + eps)
+        return K_norm
+
+    def outer_normalize(self, K_outer, diag1, diag2, eps=0):
+        K_norm = K_outer/np.sqrt(diag1[:,None]*diag2[None,:] + eps)
+        return K_norm
+
+
 
 
 class Kernel_nwalk(Kernel):
@@ -71,6 +111,7 @@ class Kernel_nwalk(Kernel):
         adj_mat = compute_adj_matrix(prod_graph)
         entry = np.sum(np.linalg.matrix_power(adj_mat, self.n))
         return entry
+
 
 
 class KernelRBF(Kernel):
@@ -142,9 +183,12 @@ class RandomWalkKernelNaive(Kernel):
         ImW_inv = np.linalg.inv(np.eye(len(g_prod)) - self.lam * W)
 
         k_result = np.sum(ImW_inv)  # ones.T @ (I - lam W)^(-1) @ ones
+
         if self.norm2:
             k_result /= len(g_prod)  # 1/n * ones.T @ (I - lam W)^(-1) @ ones
+        
         return k_result
+
 
 
 class RandomWalkKernel(Kernel):
@@ -211,15 +255,22 @@ class RandomWalkKernel(Kernel):
         nb_graphs = len(processed_graph_list)
         self.K = np.zeros((nb_graphs, nb_graphs))
         self.errors = np.zeros((nb_graphs, nb_graphs), dtype=int)
+        
+        # Computation of the inner gram matrix
         for i in tqdm(range(nb_graphs)):
             for j in range(i, nb_graphs):
                 k_ij, info = self.kernel_eval(processed_graph_list[i], processed_graph_list[j])
                 self.errors[i, j] = info
                 self.K[i, j] = k_ij
                 self.K[j, i] = k_ij
+        
+        # Post processing (psdfication, normalisation, ...)
+        K_pp = self.post_process_inner(self.K, processed_graph_list)
 
-        if self.save_kernel: self.save(self.K, outer=False, save_suf=save_suf)
-        return self.K
+        # Saving matrix
+        if self.save_kernel: self.save(K_pp, outer=False, save_suf=save_suf)
+
+        return K_pp
 
     def compute_outer_gram(self, graph_list1, graph_list2, save_suf=""):
         processed_graph_list1 = [self.filter_graph(g) for g in graph_list1]
@@ -227,14 +278,28 @@ class RandomWalkKernel(Kernel):
         nb_graphs1, nb_graphs2 = len(processed_graph_list1), len(processed_graph_list2)
         self.K_outer = np.zeros((nb_graphs1, nb_graphs2))
         self.errors_outer = np.zeros((nb_graphs1, nb_graphs2), dtype=int)
+
+        # Computing the outer gram matrix
         for i in tqdm(range(nb_graphs1)):
             for j in range(i, nb_graphs2):
                 k_ij, info = self.kernel_eval(processed_graph_list1[i], processed_graph_list2[j])
                 self.errors_outer[i, j] = info
                 self.K_outer[i, j] = k_ij
 
-        if self.save_kernel: self.save(self.K_outer, outer=True, save_suf=save_suf)
+        # Post processing (normalisation, ...)
+        diag1 = np.array([self.kernel_eval(g, g)[0] for g in processed_graph_list1])
+        diag2 = np.array([self.kernel_eval(g, g)[0] for g in processed_graph_list2])
+        K_outer_pp = self.post_process_outer(
+            self.K_outer, 
+            processed_graph_list1, 
+            processed_graph_list2,
+            diag1, diag2)
+
+        # Saving matrix
+        if self.save_kernel: self.save(K_outer_pp, outer=True, save_suf=save_suf)
+
         return self.K_outer
+
 
     def kernel_eval_unprocessed(self, g1, g2):
         return self.kernel_eval(self.filter_graph(g1), self.filter_graph(g2))
@@ -307,6 +372,118 @@ class RandomWalkKernel(Kernel):
             if self.norm2:
                 k_res /= (len_prod - nb_intruding_nodes)
             return k_res, info
+    
+    def correct_kernel(self, K, slow_kernel, sub_graphs1, sub_graphs2 = None, tol=0.01, stop_cond=10, verbose=False):
+        """Correct absurd values with a slower using surer kernel. Starts with nan, then higher values in absolute values.
+
+        Args:
+            K (ndarray): Kernel matrix to correct
+            slow_kernel (Kernel): Kernel object, with option fast=False
+            sub_graphs1 (list): List of (processed) graphs corresponding to rows
+            sub_graphs2 (list, optional): List of (processed) graphs corresponding to columns. If None, assumed to be equal to sub_graphs1. Defaults to None.
+            tol (float, optional): When a correction leads to a relative difference < tol, then we consider the initial value was good. Defaults to 0.01.
+            stop_cond (int, optional): Number of consecutive times the initial value must be good to decide to stop the algorithm. Defaults to 10.
+
+        Returns:
+            ndarray: Corrected kernel matrix
+            list: list of old values replaced (in the corresponding order)
+            list: list of new values old values have been replaced by (in the corresponding order)
+            list: list of difference new - old values (in the corresponding order)
+        """ 
+        n = K.shape[1]
+        K_correct = np.copy(K)
+        inner = sub_graphs2 is None
+        if inner: sub_graphs2 = sub_graphs1
+        assert K.shape[0] == len(sub_graphs1)
+        assert K.shape[1] == len(sub_graphs2)
+
+        idx_big = np.argsort(np.abs(K).flatten(order='C'))[::-1]
+        # nan are at the beginning
+        i_big = idx_big//n
+        j_big = idx_big%n
+
+        if inner:
+            # To remove the lower triangular part
+            of_interest = j_big >= i_big
+            i_big = i_big[of_interest]
+            j_big = j_big[of_interest]
+        
+        k_old_list = []
+        k_cor_list = []
+        k_diff_list = []
+        is_tol_list = []
+        for q in range(len(i_big)):
+            i, j = i_big[q], j_big[q]
+            k_cor, info = slow_kernel.kernel_eval(sub_graphs1[i], sub_graphs2[j])
+            k_old = K[i, j]
+            k_diff = k_cor - k_old
+            is_tol = not(np.isnan(k_old)) and (np.abs(k_diff) < tol*np.abs(k_old))
+
+            if verbose and (q%100 == 0 or is_tol): 
+                print(f"{q}: {k_cor} {k_old} {k_diff}              ", end="\r")
+
+            k_old_list.append(k_old)
+            k_cor_list.append(k_cor)
+            k_diff_list.append(k_diff)
+            is_tol_list.append(is_tol)
+
+            # if is_tol:
+            #     cntn = input(f"{q} {k_cor} {k_old} {k_diff}")
+            #     if cntn=="stop":
+            #         break
+            
+            K_correct[i, j] = k_cor
+            if inner:
+                K_correct[j, i] = k_cor
+            
+            if np.all(is_tol_list[-stop_cond:]): 
+                break
+
+        return K_correct, k_old_list, k_cor_list, k_diff_list
+    
+
+
+    def post_process_inner(self, K_inner, processed_graph_list):
+        print("Random Walk Kernel post processing")
+
+        # Corrections of troubles we have with the fast method
+        if self.fast == True:
+            slow_self = copy.deepcopy(self)
+            slow_self.fast = False
+            K_cor, _, _, _ = self.correct_kernel(K_inner, slow_self, processed_graph_list)
+        else:
+            K_cor = K_inner
+        
+        # Making matrix positive semi definite
+        K_psd = self.psdfy(K_cor, eps=2e-5)
+
+        # Normalisation
+        K_norm = self.normalize(K_psd)
+
+        return K_norm
+    
+    def post_process_outer(self, K_outer, processed_graph_list1, processed_graph_list2, diag1, diag2):
+        print("Random Walk Kernel outer post processing")
+
+        # Corrections of troubles we have with the fast method
+        if self.fast == True:
+            slow_self = copy.deepcopy(self)
+            slow_self.fast = False
+            K_cor, _, _, _ = self.correct_kernel(K_outer, slow_self, processed_graph_list1, processed_graph_list2)
+        else:
+            K_cor = K_outer
+        
+        # "Kind of" psdfication
+        diag1 = np.maximum(diag1, 1e-10)
+        diag2 = np.maximum(diag2, 1e-10)
+
+        # Normalisation 
+        K_norm = self.outer_normalize(K_cor, diag1, diag2)
+
+        return K_norm
+        
+
+
 
 
 class KernelWLSubtree(Kernel):
@@ -376,8 +553,13 @@ class KernelWLSubtree(Kernel):
                 K[i, j] = k_ij
                 K[j, i] = k_ij
 
-        if self.save_kernel: self.save(K, outer=False, save_suf='all')
-        return K
+        # Post processing (psdfication, normalisation, ...)
+        K_pp = self.post_process_inner(K)
+
+        # Saving matrix
+        if self.save_kernel: self.save(K_pp, outer=False, save_suf="all")
+
+        return K_pp
 
     def compute_outer_gram(self, graph_list1, graph_list2, save_suf=""):
         N1, N2 = len(graph_list1), len(graph_list2)
@@ -398,8 +580,13 @@ class KernelWLSubtree(Kernel):
 
                 K[i, j] = k_ij
 
-        if self.save_kernel: self.save(K, outer=True, save_suf='all')
-        return K
+        # Post processing (normalisation, ...)
+        K_outer_pp = self.post_process_outer(K)
+
+        # Saving matrix
+        if self.save_kernel: self.save(K_outer_pp, outer=True, save_suf=save_suf)
+
+        return K_outer_pp
 
 
 if __name__ == '__main__':

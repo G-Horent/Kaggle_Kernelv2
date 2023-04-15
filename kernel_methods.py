@@ -1,9 +1,11 @@
 import numpy as np
 import cvxpy as cp
 from cvxopt import matrix, solvers
+from sklearn.model_selection import StratifiedKFold
+from time import time
+
 from data import load_training_data, load_test_data, split_data
 from kernel_class import Kernel_nwalk, RandomWalkKernel, KernelRBF, KernelWLSubtree
-from time import time
 from utils import predictions_to_csv
 
 
@@ -13,8 +15,9 @@ def get_kernel(name, **kwargs):
     elif name == 'Kernel_nwalk':
         return Kernel_nwalk(n=kwargs['n'])
     elif name == 'RandomWalkKernel':
-        adapted_kwargs = {k: v for (k, v) in kwargs.items() if k != 'rwlam'}
-        adapted_kwargs['lam'] = kwargs['rwlam']
+        # adapted_kwargs = {k: v for (k, v) in kwargs.items() if k != 'rwlam'}
+        # adapted_kwargs['lam'] = kwargs['rwlam']
+        # return RandomWalkKernel(**kwargs)
         return RandomWalkKernel(lam=kwargs['rwlam'])
     elif name == 'KernelWLSubtree':
         return KernelWLSubtree(h=kwargs['h'])
@@ -27,10 +30,10 @@ class KernelMethod:
         self.kernel = get_kernel(kernel_name, **kwargs)
 
     def fit(self, X, y):
-        return 0
+        pass
 
     def predict(self, X_test):
-        return 0
+        pass
 
 
 class KernelSVM(KernelMethod):
@@ -63,20 +66,18 @@ class KernelSVM(KernelMethod):
             self.X_std = np.std(X_train, axis=0)
             self.X_std[np.argwhere(self.X_std == 0)] = 1e-8
             X_train = (X_train - self.X_mean) / self.X_std
-
         else:
             X_train = graph_list_train
 
         if not self.precomputed_kernel:
             print('Computing Kernel Gram Matrix...')
             K = self.kernel.compute_gram_matrix(X_train)
-
         else:
             K = np.load(self.kernel_path)
 
-        w, v = np.linalg.eigh(K)
-        w[w < 0] = 0
-        K = v @ np.diag(w) @ v.T
+        # w, v = np.linalg.eigh(K) # Done in kernels' post processing
+        # w[w < 0] = 0
+        # K = v @ np.diag(w) @ v.T
 
         if self.balanced:
             N_pos = np.count_nonzero(y == 1)
@@ -94,6 +95,7 @@ class KernelSVM(KernelMethod):
         result = prob.solve()
         end = time()
         print(f'QP Solved in {end - start} secs')
+
         self.alpha = alpha.value
         # print(self.alpha)
         idx_alpha_support = np.nonzero(np.abs(self.alpha) > 10e-8)
@@ -106,7 +108,6 @@ class KernelSVM(KernelMethod):
             if self.kernel.name == 'KernelRBF':
                 X_test = self.kernel.extract_features(graph_list_test)
                 X_test = (X_test - self.X_mean) / self.X_std
-
             else:
                 X_test = graph_list_test
 
@@ -130,6 +131,9 @@ class KernelSVM(KernelMethod):
 
 
 class KernelSVM2():
+    """Second version of class for Kernel Support Vector Machine, for more convenience, and using another 
+    optimisation library
+    """
     def __init__(self, lmbd=1., balanced=False, kernel=None):
         """
         Args:
@@ -204,8 +208,8 @@ class KernelSVM2():
         print(len(idx_alpha_support))
         print(len(idx_alpha_margin))
 
-        b_candi = y - K[:,
-                      idx_alpha_support] @ self.alpha_support  # we could have said y - K@self.alpha, but implies errors
+        b_candi = y - K[:,idx_alpha_support] @ self.alpha_support  
+            # we could have said y - K@self.alpha, but implies errors
         if len(idx_alpha_margin) > 0:
             self.b = np.median(b_candi[idx_alpha_margin])  # offset of the classifier
         else:
@@ -217,7 +221,7 @@ class KernelSVM2():
 
     def fit_compute(self, graph_list_train, y):
         if self.kernel is None:
-            raise AttributeError("fit_compute needs attribute kernel to be difined")
+            raise AttributeError("fit_compute needs attribute kernel to be defined")
 
         if self.kernel.name == "KernelRBF":
             # If Kernel RBF, compute feature matrix
@@ -245,10 +249,9 @@ class KernelSVM2():
 
     def predict_compute(self, graph_list_test):
         if self.kernel is None:
-            raise AttributeError("predict_compute needs attribute kernel to be difined.")
+            raise AttributeError("predict_compute needs attribute kernel to be defined.")
         if self.X_support is None:
-            raise AttributeError(
-                "predict_compute needs X_train to have been filled in previously in the fit operation.")
+            raise AttributeError("predict_compute needs X_train to have been filled in previously in the fit operation.")
         if self.alpha_support is None:
             raise AttributeError("The model has to be fitted first before predictions")
 
@@ -283,6 +286,41 @@ class KernelSVM2():
     def score_compute(self, graph_list_test, y_true, score_type='accuracy'):
         y_pred = self.predict_compute(graph_list_test)
         return self._score(y_true, y_pred, score_type=score_type)
+
+
+
+def cross_validate(K, y, n_splits, lmbd_values, balanced=False):
+    accuracies = np.zeros((len(lmbd_values), n_splits))
+    aurocs     = np.zeros((len(lmbd_values), n_splits))
+    for i, lmbd in enumerate(lmbd_values):
+        print(f"lmbd={lmbd}")
+        splitter = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+        for j, (idx_train, idx_test) in enumerate(splitter.split(np.zeros(y.shape), y)):
+            # return idx_train
+            K_train = K[np.ix_(idx_train, idx_train)]
+            K_test  = K[np.ix_(idx_test , idx_train)]
+            y_train = y[idx_train]
+            y_test  = y[idx_test]
+            try:
+                svm = KernelSVM2(lmbd=lmbd, balanced=balanced)
+                svm.fit(K_train, y_train)
+                accuracies[i,j] = svm.score(K_test, y_test, score_type="accuracy")
+                aurocs[i,j] = svm.score(K_test, y_test, score_type='AUROC')
+                print(f"AUROC:{aurocs[i,j]}")
+            except ValueError as e:
+                print(f"Value Error for lmbd={lmbd}, j_fold={j}: {e}")
+                accuracies[i,j] = np.nan
+                aurocs[i,j]     = np.nan
+    return accuracies, aurocs
+
+def hyper_cross_validate(Ks, ys, n_splits, lmbd_values, balanced=False):
+    accuracies = np.zeros((len(lmbd_values), len(Ks), n_splits))
+    aurocs     = np.zeros((len(lmbd_values), len(Ks), n_splits))
+    for i, (K, y) in enumerate(zip(Ks, ys)):
+        accuracy, auroc = cross_validate(K, y, n_splits=n_splits, lmbd_values=lmbd_values, balanced=balanced)
+        accuracies[:,i,:] = accuracy
+        aurocs[:,i,:]     = auroc
+    return accuracies, aurocs
 
 
 if __name__ == '__main__':
