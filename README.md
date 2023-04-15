@@ -1,25 +1,19 @@
-# Kaggle_Kernel
+# Kaggle Challenge - Kernel Methods for Machine Learning 2023 (MVA)
+## Léo Buecher, Guillaume Horent
 
-## Ideas of improvements and developments
+### Implemented kernels (in kernel_class.py):
 
-### Kernels
+- N-th order walk kernel
+- Random walk kernel
+- RBF with hand-crafted features
+- Weisfeiler-Lehman Subtree Kernel
 
-- try random walk kernel
-- try WL subtree, shortest path
-- try RBF on features
+### Implemented kernel method (see kernel_methods.py):
 
-- (try shortest path ?)
+- Standard SVM
 
-### Learning
 
-- SVC
-- Logistic regression
-- try PCA then classification (maybe bad idea)
+To reproduce the submission, launch the script <code> start.py </code> with the corresponding arguments (by default,
+reproduces the Weisfeiler-Lehman kernel with 3 iterations, and a regularization of 0.0001)
 
-### Data
 
-- see whether we should remove some data from the training. (Particularly, see if there are problematic data in the test set. Try submissions with or without).
-
-### Other
-
-- look at the optional slides
